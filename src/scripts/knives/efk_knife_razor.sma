@@ -46,6 +46,10 @@ new const PLUGIN[] = "EFK: Razor Knife"
 #define ABIL3_SLOW_MUL				0.5
 #define ABIL3_SLOW_TIME				2.5
 
+#define DAMAGE_RESTORE_HEAL			4
+#define DAMAGE_RESTORE_DELAY		1.0
+#define DAMAGE_RESTORE_START_TIME	3.0
+
 new const MODEL_V_KNIFE[]		= "models/next21_efk/v_razor_knife_b02.mdl"
 new const MODEL_P_KNIFE[]		= "models/next21_efk/p_razor_knife_r2.mdl"
 
@@ -112,13 +116,17 @@ enum _:PlayerData
 	PlrStealingTarget,
 	Float:PlrStolenSpeed[MAX_PLAYERS + 1],
 	bool:PlrInPush,
+	bool:PlrPunchHitEnemy,
+	bool:PlrPunchHitWall,
 	Float:PlrStealDelay,
 	Float:PlrCorrectionDelay,
-	Float:PlrStartSpeed,
 	Float:PlrPushSpeed,
 	Float:PlrLastVelocity[3],
 	PlrRazorBeam,
-	PlrSphereEnt
+	PlrSphereEnt,
+	PlrFallDamageRestore,
+	Float:PlrFallDamageRestoreTime,
+	bool:PlrWasPunchFallDamage
 }
 
 #define Player[%1][%2]	g_ePlayerData[%1 - 1][%2]
@@ -197,6 +205,7 @@ public plugin_init()
 
 	RegisterHam(Ham_TraceAttack, "player", "Ham_PlayerTraceAttack_Pre")
 	RegisterHam(Ham_TakeDamage, "player", "Ham_PlayerTakeDamage_Pre")
+	RegisterHam(Ham_TakeDamage, "player", "Ham_PlayerTakeDamage_Post", 1)
 	RegisterHam(Ham_TakeDamage, "env_explosion", "Ham_EnvExplosionTakeDamage_Post", true)
 
 	register_impulse(100, "fw_PlayerFlashlight")
@@ -258,6 +267,8 @@ public RG_CBasePlayer_Spawn_Post(iPlayer)
 		}
 
 		Player[iPlayer][PlrIsAlive] = true
+		Player[iPlayer][PlrFallDamageRestore] = 0
+		Player[iPlayer][PlrWasPunchFallDamage] = false
 		razor_punch_end(iPlayer)
 	}
 }
@@ -314,10 +325,43 @@ public RG_CBasePlayer_PreThink_Post(iPlayer)
 		get_entvar(iPlayer, var_velocity, vVelocity)
 		vVelocity[2] = 0.0
 
-		if (Player[iPlayer][PlrStartSpeed] - xs_vec_len(vVelocity) > 100.0 || get_entvar(iPlayer, var_flags) & FL_ONGROUND)
+		new bool:bOnGround = bool:(get_entvar(iPlayer, var_flags) & FL_ONGROUND)
+
+		if (!Player[iPlayer][PlrPunchHitEnemy] && !Player[iPlayer][PlrPunchHitWall])
+		{
+			if (razor_punch_try_hit_enemy(iPlayer))
+				Player[iPlayer][PlrPunchHitEnemy] = true
+			else if (!bOnGround && xs_vec_len(Player[iPlayer][PlrLastVelocity]) - xs_vec_len(vVelocity) > 100.0
+				&& razor_punch_try_hit_wall(iPlayer))
+				Player[iPlayer][PlrPunchHitWall] = true
+		}
+
+		if (bOnGround)
 			razor_punch_explosion(iPlayer)
 
 		xs_vec_copy(vVelocity, Player[iPlayer][PlrLastVelocity])
+	}
+
+	if (Player[iPlayer][PlrFallDamageRestore]
+		&& Player[iPlayer][PlrFallDamageRestoreTime] <= fGameTime
+		&& !kc_player_in_burn(iPlayer))
+	{
+		new Float:fMaxHealth = kc_player_get_maxhealth(iPlayer)
+		new Float:fHealth = Float:get_entvar(iPlayer, var_health)
+		new iRest = min(Player[iPlayer][PlrFallDamageRestore], DAMAGE_RESTORE_HEAL)
+
+		if (fHealth + float(iRest) >= fMaxHealth)
+		{
+			if (fHealth < fMaxHealth)
+				set_entvar(iPlayer, var_health, fMaxHealth)
+			Player[iPlayer][PlrFallDamageRestore] = 0
+		}
+		else
+		{
+			set_entvar(iPlayer, var_health, fHealth + float(iRest))
+			Player[iPlayer][PlrFallDamageRestore] -= iRest
+			Player[iPlayer][PlrFallDamageRestoreTime] = fGameTime + DAMAGE_RESTORE_DELAY
+		}
 	}
 }
 
@@ -456,14 +500,42 @@ public Ham_PlayerTakeDamage_Pre(iVictim, iInflictor, iAttacker, Float:fDamage, i
 
 	if (Player[iVictim][PlrInPush] && (iFlags & DMG_FALL))
 	{
-		SetHamParamFloat(4, fDamage / ABIL3_FALLDMGDIVIDER)
-		return HAM_OVERRIDE
+		Player[iVictim][PlrWasPunchFallDamage] = true
+
+		if (!Player[iVictim][PlrPunchHitEnemy] && !Player[iVictim][PlrPunchHitWall] && Player[iVictim][PlrPushSpeed] > 0.0)
+		{
+			SetHamParamFloat(4, fDamage / ABIL3_FALLDMGDIVIDER)
+			return HAM_OVERRIDE
+		}
+
+		return HAM_IGNORED
 	}
 
 	if (Player[iVictim][PlrKnife] == g_iKnifeId && Player[iVictim][PlrStealingTarget]
 		&& fDamage >= 1.0 && !(iFlags & DMG_BURN))
 	{
 		discharge_stealer(iVictim)
+	}
+
+	return HAM_IGNORED
+}
+
+public Ham_PlayerTakeDamage_Post(iVictim, iInflictor, iAttacker, Float:fDamage, iFlags)
+{
+	if (GetHamReturnStatus() == HAM_SUPERCEDE)
+		return HAM_SUPERCEDE
+
+	if (!Player[iVictim][PlrIsAlive])
+		return HAM_IGNORED
+
+	if ((iFlags & DMG_FALL) && Player[iVictim][PlrWasPunchFallDamage])
+	{
+		Player[iVictim][PlrWasPunchFallDamage] = false
+
+		if (!Player[iVictim][PlrFallDamageRestore])
+			Player[iVictim][PlrFallDamageRestoreTime] = get_gametime() + DAMAGE_RESTORE_START_TIME
+
+		Player[iVictim][PlrFallDamageRestore] += floatround(fDamage, floatround_floor)
 	}
 
 	return HAM_IGNORED
@@ -666,6 +738,8 @@ public efk_change_knife_core_post(iPlayer, iKnifeId)
 		if (kc_player_get_powerspeed(iPlayer) > 0.0)
 			kc_player_set_powerspeed(iPlayer, 0.0)
 
+		Player[iPlayer][PlrFallDamageRestore] = 0
+		Player[iPlayer][PlrWasPunchFallDamage] = false
 		razor_punch_end(iPlayer)
 	}
 	else
@@ -851,6 +925,8 @@ public efk_ability3(iPlayer)
 	kc_player_set_bair(iPlayer, FL_BAIR_CLIMB)
 
 	Player[iPlayer][PlrInPush] = true
+	Player[iPlayer][PlrPunchHitEnemy] = false
+	Player[iPlayer][PlrPunchHitWall] = false
 
 	new Float:fPunchSpeed = kc_player_get_powerspeed(iPlayer) * 0.25
 	if (fPunchSpeed > 0.0)
@@ -867,8 +943,9 @@ public efk_ability3(iPlayer)
 	fix_velocity(vVelocity)
 	set_entvar(iPlayer, var_velocity, vVelocity)
 	set_entvar(iPlayer, var_flags, get_entvar(iPlayer, var_flags) & ~FL_ONGROUND)
+
 	vVelocity[2] = 0.0
-	Player[iPlayer][PlrStartSpeed] = xs_vec_len(vVelocity)
+	xs_vec_copy(vVelocity, Player[iPlayer][PlrLastVelocity])
 
 	emit_sound(iPlayer, CHAN_BODY, SOUND_JUMP, VOL_NORM, ATTN_NORM, 0, 90)
 	send_msg_TE_BEAMFOLLOW(iPlayer | 0x1000, g_pBeamSpr, 5, 2, ABIL3_GREEN_COLOR, 150)
@@ -889,7 +966,7 @@ steal_speed(iPlayer, iTarget, Float:fAdd, Float:fSub)
 	kc_player_set_powerspeed(iTarget, kc_player_get_powerspeed(iTarget) - fSub)
 }
 
-bool:razor_punch_explosion(iPlayer)
+bool:razor_punch_try_hit_enemy(iPlayer)
 {
 	new iPushedPlayers[MAX_PLAYERS], iPushedPlayersNum, Float:vVec[3]
 
@@ -907,129 +984,143 @@ bool:razor_punch_explosion(iPlayer)
 			iPushedPlayers[iPushedPlayersNum++] = iTarget
 	}
 
-	if (iPushedPlayersNum)
-	{
-		xs_vec_copy(Player[iPlayer][PlrLastVelocity], vVec)
-		fix_velocity(vVec)
+	if (!iPushedPlayersNum)
+		return false
 
-		for (new i; i < iPushedPlayersNum; i++)
+	xs_vec_copy(Player[iPlayer][PlrLastVelocity], vVec)
+	fix_velocity(vVec)
+
+	for (new i; i < iPushedPlayersNum; i++)
+	{
+		iTarget = iPushedPlayers[i]
+
+		kc_player_unfreeze(iTarget)
+
+		kc_player_slow(iTarget, ABIL3_SLOW_MUL, ABIL3_SLOW_TIME)
+		steal_speed(iPlayer, iTarget, 20.0, 20.0)
+
+		set_member(iTarget, m_flVelocityModifier, 1.0)
+		set_entvar(iTarget, var_velocity, vVec)
+	}
+
+	xs_vec_neg(Player[iPlayer][PlrLastVelocity], vVec)
+	xs_vec_mul_scalar(vVec, 0.5, vVec)
+	set_entvar(iPlayer, var_velocity, vVec)
+	emit_sound(iPlayer, CHAN_STATIC, SOUND_PUNCH, VOL_NORM, ATTN_NORM, 0, 90)
+
+	return true
+}
+
+bool:razor_punch_try_hit_wall(iPlayer)
+{
+	new Float:vVec[3], Float:vVecEnd[3]
+	xs_vec_copy(Player[iPlayer][PlrLastVelocity], vVecEnd)
+	get_entvar(iPlayer, var_origin, vVec)
+
+	new iHit
+	xs_vec_add(vVecEnd, vVec, vVecEnd)
+	engfunc(EngFunc_TraceLine, vVec, vVecEnd, IGNORE_MONSTERS, iPlayer, 0)
+	get_tr2(0, TR_vecEndPos, vVecEnd)
+
+	if (get_distance_f(vVec, vVecEnd) > 32.0)
+	{
+		if (~get_entvar(iPlayer, var_flags) & FL_ONGROUND)
+			return false
+
+		vVecEnd = vVec
+		vVecEnd[2] -= 8192.0
+		engfunc(EngFunc_TraceLine, vVec, vVecEnd, IGNORE_MONSTERS, iPlayer, 0)
+		get_tr2(0, TR_vecEndPos, vVecEnd)
+	}
+
+	iHit = (iHit = get_tr2(0, TR_pHit)) == -1 ? 0 : iHit
+
+	if (!iHit
+		|| (!is_nullent(iHit) && (~get_entvar(iHit, var_flags) & FL_KILLME) && (get_entvar(iHit, var_solid) == SOLID_BSP || get_entvar(iHit, var_movetype) == MOVETYPE_PUSHSTEP)))
+	{
+		write_decal_break(vVecEnd, iHit)
+		write_decal_break(vVecEnd, iHit)
+		draw_rocks(vVecEnd)
+
+		new Float:vAxis[3]
+		vAxis[0] = vVecEnd[0]
+		vAxis[1] = vVecEnd[1]
+		vAxis[2] = vVecEnd[2] + 32.0 + 100 * 2
+		send_msg_TE_BEAMCYLINDER(vVecEnd, vAxis, g_pBeamSpr,
+			0, 0, 2, 25, 0, {255, 255, 255}, 50, 0, MSG_PVS, vVecEnd)
+
+		emit_sound(iPlayer, CHAN_STATIC, SOUND_PUNCH, VOL_NORM, ATTN_NORM, 0, 90)
+
+		new Float:vNormal[3], Float:vTargetOrigin[3], Float:vTargetVelocity[3]
+		get_tr2(0, TR_vecPlaneNormal, vNormal)
+		vNormal[0] = -vNormal[0]
+		vNormal[1] = -vNormal[1]
+
+		new iTarget = 0
+		while ((iTarget = engfunc(EngFunc_FindEntityInSphere, iTarget, vVecEnd, ABIL3_SCREENSHAKE_RADIUS)) <= MaxClients)
 		{
-			iTarget = iPushedPlayers[i]
+			if (iTarget < 1)
+				break
+
+			if (iTarget == iPlayer)
+			{
+				send_msg_ScreenShake((1<<14), (1<<14), (1<<14), MSG_ONE, _, iTarget)
+				continue
+			}
+
+			if (!Player[iTarget][PlrIsAlive] || kc_player_check_game_flag(iTarget, PLGF_IN_UNABILITY))
+				continue
+
+			get_entvar(iTarget, var_origin, vTargetOrigin)
+			xs_vec_sub(vTargetOrigin, vVecEnd, vTargetVelocity)
+			xs_vec_normalize(vTargetVelocity, vTargetVelocity)
+
+			if (-0.3 < vNormal[2] < 0.3)
+			{
+				if (xs_vec_dot(vNormal, vTargetVelocity) < -0.2)
+					continue
+
+				xs_vec_normalize(vTargetVelocity, vTargetVelocity)
+				vTargetVelocity[2] = 0.5
+			}
+			else
+			{
+				xs_vec_normalize(vTargetVelocity, vTargetVelocity)
+				vTargetVelocity[2] = 0.8
+			}
+
+			send_msg_ScreenShake((1<<14), (1<<14), (1<<14), MSG_ONE, _, iTarget)
+			if (Player[iTarget][PlrTeam] == Player[iPlayer][PlrTeam])
+				continue
 
 			kc_player_unfreeze(iTarget)
+			set_member(iTarget, m_flVelocityModifier, 0.0)
+			set_entvar(iTarget, var_flags, get_entvar(iTarget, var_flags) & ~FL_ONGROUND)
 
+			xs_vec_mul_scalar(vTargetVelocity, ABIL3_SCREENSHAKE_VELOCITY, vTargetVelocity)
+			set_entvar(iTarget, var_velocity, vTargetVelocity)
 			kc_player_slow(iTarget, ABIL3_SLOW_MUL, ABIL3_SLOW_TIME)
-			steal_speed(iPlayer, iTarget, 20.0, 20.0)
-
-			set_member(iTarget, m_flVelocityModifier, 1.0)
-			set_entvar(iTarget, var_velocity, vVec)
 		}
-
-		xs_vec_neg(Player[iPlayer][PlrLastVelocity], vVec)
-		xs_vec_mul_scalar(vVec, 0.5, vVec)
-		set_entvar(iPlayer, var_velocity, vVec)
-		emit_sound(iPlayer, CHAN_STATIC, SOUND_PUNCH, VOL_NORM, ATTN_NORM, 0, 90)
 	}
-	else if (Player[iPlayer][PlrPushSpeed] == 0.0)
+
+	return true
+}
+
+bool:razor_punch_explosion(iPlayer)
+{
+	if (Player[iPlayer][PlrPunchHitEnemy] || Player[iPlayer][PlrPunchHitWall] || razor_punch_try_hit_enemy(iPlayer))
+	{
+		razor_punch_end(iPlayer)
+		return true
+	}
+
+	if (Player[iPlayer][PlrPushSpeed] == 0.0)
 	{
 		razor_punch_end(iPlayer)
 		return false
 	}
-	else
-	{
-		new Float:vVecEnd[3]
-		xs_vec_copy(Player[iPlayer][PlrLastVelocity], vVecEnd)
-		get_entvar(iPlayer, var_origin, vVec)
 
-		new iHit
-		xs_vec_add(vVecEnd, vVec, vVecEnd)
-		engfunc(EngFunc_TraceLine, vVec, vVecEnd, IGNORE_MONSTERS, iPlayer, 0)
-		get_tr2(0, TR_vecEndPos, vVecEnd)
-
-		if (get_distance_f(vVec, vVecEnd) > 32.0)
-		{
-			if (~get_entvar(iPlayer, var_flags) & FL_ONGROUND)
-			{
-				razor_punch_end(iPlayer)
-				return false
-			}
-
-			vVecEnd = vVec
-			vVecEnd[2] -= 8192.0
-			engfunc(EngFunc_TraceLine, vVec, vVecEnd, IGNORE_MONSTERS, iPlayer, 0)
-			get_tr2(0, TR_vecEndPos, vVecEnd)
-		}
-
-		iHit = (iHit = get_tr2(0, TR_pHit)) == -1 ? 0 : iHit
-
-		if (!iHit
-			|| (!is_nullent(iHit) && (~get_entvar(iHit, var_flags) & FL_KILLME) && (get_entvar(iHit, var_solid) == SOLID_BSP || get_entvar(iHit, var_movetype) == MOVETYPE_PUSHSTEP)))
-		{
-			write_decal_break(vVecEnd, iHit)
-			write_decal_break(vVecEnd, iHit)
-			draw_rocks(vVecEnd)
-
-			new Float:vAxis[3]
-			vAxis[0] = vVecEnd[0]
-			vAxis[1] = vVecEnd[1]
-			vAxis[2] = vVecEnd[2] + 32.0 + 100 * 2
-			send_msg_TE_BEAMCYLINDER(vVecEnd, vAxis, g_pBeamSpr,
-				0, 0, 2, 25, 0, {255, 255, 255}, 50, 0, MSG_PVS, vVecEnd)
-
-			emit_sound(iPlayer, CHAN_STATIC, SOUND_PUNCH, VOL_NORM, ATTN_NORM, 0, 90)
-
-			new Float:vNormal[3], Float:vTargetOrigin[3], Float:vTargetVelocity[3]
-			get_tr2(0, TR_vecPlaneNormal, vNormal)
-			vNormal[0] = -vNormal[0]
-			vNormal[1] = -vNormal[1]
-
-			iTarget = 0
-			while ((iTarget = engfunc(EngFunc_FindEntityInSphere, iTarget, vVecEnd, ABIL3_SCREENSHAKE_RADIUS)) <= MaxClients)
-			{
-				if (iTarget < 1)
-					break
-
-				if (iTarget == iPlayer)
-				{
-					send_msg_ScreenShake((1<<14), (1<<14), (1<<14), MSG_ONE, _, iTarget)
-					continue
-				}
-
-				if (!Player[iTarget][PlrIsAlive] || kc_player_check_game_flag(iTarget, PLGF_IN_UNABILITY))
-					continue
-
-				get_entvar(iTarget, var_origin, vTargetOrigin)
-				xs_vec_sub(vTargetOrigin, vVecEnd, vTargetVelocity)
-				xs_vec_normalize(vTargetVelocity, vTargetVelocity)
-
-				if (-0.3 < vNormal[2] < 0.3)
-				{
-					if (xs_vec_dot(vNormal, vTargetVelocity) < -0.2)
-						continue
-
-					xs_vec_normalize(vTargetVelocity, vTargetVelocity)
-					vTargetVelocity[2] = 0.5
-				}
-				else
-				{
-					xs_vec_normalize(vTargetVelocity, vTargetVelocity)
-					vTargetVelocity[2] = 0.8
-				}
-
-				send_msg_ScreenShake((1<<14), (1<<14), (1<<14), MSG_ONE, _, iTarget)
-				if (Player[iTarget][PlrTeam] == Player[iPlayer][PlrTeam])
-					continue
-
-				kc_player_unfreeze(iTarget)
-				set_member(iTarget, m_flVelocityModifier, 0.0)
-				set_entvar(iTarget, var_flags, get_entvar(iTarget, var_flags) & ~FL_ONGROUND)
-
-				xs_vec_mul_scalar(vTargetVelocity, ABIL3_SCREENSHAKE_VELOCITY, vTargetVelocity)
-				set_entvar(iTarget, var_velocity, vTargetVelocity)
-				kc_player_slow(iTarget, ABIL3_SLOW_MUL, ABIL3_SLOW_TIME)
-			}
-		}
-	}
+	razor_punch_try_hit_wall(iPlayer)
 
 	razor_punch_end(iPlayer)
 	return true
@@ -1038,10 +1129,6 @@ bool:razor_punch_explosion(iPlayer)
 discharge_stealer(const iPlayer)
 {
 	out_stealing(iPlayer, Player[iPlayer][PlrStealingTarget])
-
-	new Float:fPowerSpeed = kc_player_get_powerspeed(iPlayer)
-	if (fPowerSpeed > 0.0)
-		kc_player_set_powerspeed(iPlayer, fPowerSpeed * 0.5)
 }
 
 out_stealing(const iPlayer, const iTarget)
@@ -1083,6 +1170,8 @@ razor_punch_end(iPlayer)
 	if (Player[iPlayer][PlrInPush])
 	{
 		Player[iPlayer][PlrInPush] = false
+		Player[iPlayer][PlrPunchHitEnemy] = false
+		Player[iPlayer][PlrPunchHitWall] = false
 		if (Player[iPlayer][PlrIsAlive])
 		{
 			send_msg_TE_KILLBEAM(iPlayer | 0x1000, MSG_ALL)
