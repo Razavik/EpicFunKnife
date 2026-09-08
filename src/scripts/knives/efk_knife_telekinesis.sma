@@ -235,9 +235,9 @@ public fw_PlayerDamage(iVictim, gun, attacker, Float:damage, bits)
 	{
 		if (bits & DMG_FALL)
 		{
+			telekinesis_add_charge(iVictim, damage)
 			damage /= FALLDMGDIVIDER
 			SetHamParamFloat(4, damage)
-			telekinesis_add_charge(iVictim, damage)
 			return HAM_OVERRIDE
 		}
 
