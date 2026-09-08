@@ -327,12 +327,12 @@ public RG_CBasePlayer_PreThink_Post(iPlayer)
 
 		new bool:bOnGround = bool:(get_entvar(iPlayer, var_flags) & FL_ONGROUND)
 
-		if (!Player[iPlayer][PlrPunchHitEnemy] && !Player[iPlayer][PlrPunchHitWall])
+		if (!Player[iPlayer][PlrPunchHitEnemy] && !Player[iPlayer][PlrPunchHitWall]
+			&& !bOnGround && xs_vec_len(Player[iPlayer][PlrLastVelocity]) - xs_vec_len(vVelocity) > 100.0)
 		{
 			if (razor_punch_try_hit_enemy(iPlayer))
 				Player[iPlayer][PlrPunchHitEnemy] = true
-			else if (!bOnGround && xs_vec_len(Player[iPlayer][PlrLastVelocity]) - xs_vec_len(vVelocity) > 100.0
-				&& razor_punch_try_hit_wall(iPlayer))
+			else if (razor_punch_try_hit_wall(iPlayer))
 				Player[iPlayer][PlrPunchHitWall] = true
 		}
 
