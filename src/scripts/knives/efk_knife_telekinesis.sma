@@ -265,8 +265,11 @@ public fw_PlayerDamage(iVictim, gun, attacker, Float:damage, bits)
 		{
 			damage /= FALLDMGDIVIDER
 			SetHamParamFloat(4, damage)
+			telekinesis_add_taken_damage_charge(iVictim, damage)
 			return HAM_OVERRIDE
 		}
+
+		telekinesis_add_taken_damage_charge(iVictim, damage)
 	}
 
 	if (!is_entity_player(attacker))
@@ -688,6 +691,21 @@ bool:telekinesis_target(iPlayer, iVictim, AbilityMode:iMode, bool:bIgnoreTeammat
 		kc_player_set_view_anim(iPlayer, VIEW_SEQ_DISTANCE_ATTACK)
 
 	return true
+}
+
+telekinesis_add_taken_damage_charge(iPlayer, Float:damage)
+{
+	if (damage <= 0.0)
+		return
+
+	new Float:fNewCharge = floatmin(100.0, kc_player_get_abil1_charge(iPlayer) + damage * 0.25)
+	kc_player_set_abil1_charge(iPlayer, fNewCharge)
+
+	if (fNewCharge >= 100.0 && Player[iPlayer][AbilMode] < MODE_GROUP1_END)
+	{
+		telekinesis_self(iPlayer)
+		kc_player_set_abil1_charge(iPlayer, 27.78)
+	}
 }
 
 telekinesis_self(iPlayer)
