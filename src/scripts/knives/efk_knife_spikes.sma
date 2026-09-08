@@ -375,7 +375,8 @@ public fw_PlayerDamage(iVictim, inflictor, attacker, Float:damage, bits)
 
 					if (engfunc(EngFunc_PointContents, vFloorOrigin) == CONTENTS_EMPTY)
 					{
-						vAngles[1] = 0.0
+						get_entvar(iVictim, var_v_angle, vAngles)
+						vAngles[0] = vAngles[2] = 0.0
 						spike_setup(iSpikeEnt, iVictim, vFloorOrigin, vAngles, fGameTime)
 					}
 					else
