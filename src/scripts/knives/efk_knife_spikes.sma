@@ -60,7 +60,6 @@ new const SPIKES_CLASSNAME[] =		"next21_spikes"
 #define DROWN_COOLDOWN		14.0
 
 #define MAX_STOMP_SPIKES		10
-#define MAX_STOMP_CENTER_SPIKES	3
 #define FALLDMGDIVIDER			7.0
 
 #define SPINE_SPIKES_DAMAGE 			15.0
@@ -369,28 +368,19 @@ public fw_PlayerDamage(iVictim, inflictor, attacker, Float:damage, bits)
 				new Float:vPlayerOrigin[3], Float:vEntOrigin[3], Float:vFloorOrigin[3], Float:vAngles[3], iSpikeEnt
 				get_entvar(iVictim, var_origin, vPlayerOrigin)
 
-				for (new i; i < MAX_STOMP_CENTER_SPIKES; i++)
+				iSpikeEnt = rg_create_entity(SZ_INFO_TARGET)
+				if (is_entity(iSpikeEnt))
 				{
-					iSpikeEnt = rg_create_entity(SZ_INFO_TARGET)
-					if (!is_entity(iSpikeEnt))
-						break
+					get_floor_origin(iSpikeEnt, vPlayerOrigin, vFloorOrigin)
 
-					vEntOrigin[0] = vPlayerOrigin[0] + floatcos(i * 360.0 / MAX_STOMP_CENTER_SPIKES, degrees) * 30.0
-					vEntOrigin[1] = vPlayerOrigin[1] + floatsin(i * 360.0 / MAX_STOMP_CENTER_SPIKES, degrees) * 30.0
-					vEntOrigin[2] = vPlayerOrigin[2]
-
-					get_floor_origin(iSpikeEnt, vEntOrigin, vFloorOrigin)
-
-					if (engfunc(EngFunc_PointContents, vFloorOrigin) != CONTENTS_EMPTY)
+					if (engfunc(EngFunc_PointContents, vFloorOrigin) == CONTENTS_EMPTY)
 					{
-						set_entvar(iSpikeEnt, var_flags, FL_KILLME)
-						continue
+						get_entvar(iVictim, var_v_angle, vAngles)
+						vAngles[0] = vAngles[2] = 0.0
+						spike_setup(iSpikeEnt, iVictim, vFloorOrigin, vAngles, fGameTime)
 					}
-
-					vAngles[1] = i * 360.0 / MAX_STOMP_CENTER_SPIKES
-
-					spike_setup(iSpikeEnt, iVictim, vFloorOrigin, vAngles, fGameTime)
-					set_entvar(iSpikeEnt, var_spike_lifetime, 0.45)
+					else
+						set_entvar(iSpikeEnt, var_flags, FL_KILLME)
 				}
 
 				for (new i; i < MAX_STOMP_SPIKES; i++)
