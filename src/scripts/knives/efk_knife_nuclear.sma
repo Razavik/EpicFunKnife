@@ -722,6 +722,30 @@ public hammer_touch(iHammerEnt, iOther)
 		return HC_CONTINUE
 	}
 
+	switch (get_entvar(iOther, var_impulse))
+	{
+		case IMPULSE_ACIDTRAP:
+		{
+			dllfunc(DLLFunc_Use, iOther, iHammerEnt, iHammerEnt, USE_TOGGLE, 0.0)
+			engfunc(EngFunc_EmitSound, iHammerEnt, CHAN_STATIC, random(2) ? SOUND_KNIFE_HIT1 : SOUND_KNIFE_HIT2, 1.0, ATTN_NORM, 0, PITCH_NORM)
+			return HC_CONTINUE
+		}
+		case IMPULSE_ICICLE:
+		{
+			dllfunc(DLLFunc_Touch, iOther, iHammerEnt)
+			if (is_entity(iOther))
+				rg_remove_entity(iOther)
+			engfunc(EngFunc_EmitSound, iHammerEnt, CHAN_STATIC, random(2) ? SOUND_KNIFE_HIT1 : SOUND_KNIFE_HIT2, 1.0, ATTN_NORM, 0, PITCH_NORM)
+			return HC_CONTINUE
+		}
+		case IMPULSE_KUNAI, IMPULSE_RAZOR_SPHERE:
+		{
+			dllfunc(DLLFunc_Think, iOther)
+			engfunc(EngFunc_EmitSound, iHammerEnt, CHAN_STATIC, random(2) ? SOUND_KNIFE_HIT1 : SOUND_KNIFE_HIT2, 1.0, ATTN_NORM, 0, PITCH_NORM)
+			return HC_CONTINUE
+		}
+	}
+
 	if (!Player[iOwner][PlrHammerReturning])
 		hammer_hit_world(iHammerEnt, iOwner)
 
