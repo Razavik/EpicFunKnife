@@ -281,6 +281,8 @@ enum _:PlayerProperties
 	PlrAttacker,
 	PlrDeathReasonText[LEN_DEATH_REASON],
 	bool:PlrDeathReasonApplied,
+	PlrAbility3NameOverride[LEN_ABILITY_NAME],
+	PlrAbility2HintText[LEN_ABILITY_NAME],
 	PlrHpBarEnt,
 	PlrBlindEffEnt,
 	PlrCameraEnt,
@@ -671,6 +673,10 @@ public plugin_natives()
 	register_native("kc_player_try_crit", "_21kc_player_try_crit")
 
 	register_native("kc_player_set_death_reason", "_21kc_player_set_death_reason")
+
+	register_native("kc_player_set_ability3_name", "_21kc_player_set_ability3_name")
+
+	register_native("kc_player_set_ability2_hint", "_21kc_player_set_ability2_hint")
 
 	register_native("kc_player_is_influenced", "_21kc_player_is_influenced")
 
@@ -2049,14 +2055,26 @@ public RG_CBasePlayer_PreThink_Pre(iPlayer)
 			iLen = 0
 
 			if (Knife[iSubjectKnifeId][KNF_ABILITY2_NAME][0] != EOS)
+			{
 				iLen = formatex(szChargingText, charsmax(szChargingText), "%s (E) (%dpt)",
 					Knife[iSubjectKnifeId][KNF_ABILITY2_NAME],
 					floatround(PlayerF[iSubject][PlrAbility2Charge], floatround_floor))
 
+				if (Player[iSubject][PlrAbility2HintText][0] != EOS)
+					iLen += formatex(szChargingText[iLen], charsmax(szChargingText), " (%L)",
+						iPlayer, Player[iSubject][PlrAbility2HintText])
+			}
+
 			if (Knife[iSubjectKnifeId][KNF_ABILITY3_NAME][0] != EOS)
-				iLen += formatex(szChargingText[iLen], charsmax(szChargingText), "^n%s (R) (%dpt)",
-					Knife[iSubjectKnifeId][KNF_ABILITY3_NAME],
-					floatround(PlayerF[iSubject][PlrAbility3Charge], floatround_floor))
+			{
+				if (Player[iSubject][PlrAbility3NameOverride][0] != EOS)
+					iLen += formatex(szChargingText[iLen], charsmax(szChargingText), "^n%s (R)",
+						Player[iSubject][PlrAbility3NameOverride])
+				else
+					iLen += formatex(szChargingText[iLen], charsmax(szChargingText), "^n%s (R) (%dpt)",
+						Knife[iSubjectKnifeId][KNF_ABILITY3_NAME],
+						floatround(PlayerF[iSubject][PlrAbility3Charge], floatround_floor))
+			}
 
 			if (Knife[iSubjectKnifeId][KNF_ABILITY4_NAME][0] != EOS)
 				formatex(szChargingText[iLen], charsmax(szChargingText), "^n%s (F) (%dpt)",
@@ -4873,6 +4891,8 @@ set_knife_params(iPlayer, iKnifeId)
 		set_pdata_string(i, 492 * 4, ANIM_EXTENSIONS[Knife[iKnifeId][KNF_ANIM_EXT]], -1, 5 * 4)
 	}
 
+	Player[iPlayer][PlrAbility3NameOverride][0] = EOS
+	Player[iPlayer][PlrAbility2HintText][0] = EOS
 	Player[iPlayer][PlrKnife] = iKnifeId
 }
 
@@ -8670,6 +8690,18 @@ public _21kc_player_set_death_reason(plugin, num_params)
 	new iPlayer = get_param(1)
 	if (!Player[iPlayer][PlrDeathReasonApplied])
 		get_string(2, Player[iPlayer][PlrDeathReasonText], LEN_DEATH_REASON - 1)
+}
+
+public _21kc_player_set_ability3_name(plugin, num_params)
+{
+	new iPlayer = get_param(1)
+	get_string(2, Player[iPlayer][PlrAbility3NameOverride], LEN_ABILITY_NAME - 1)
+}
+
+public _21kc_player_set_ability2_hint(plugin, num_params)
+{
+	new iPlayer = get_param(1)
+	get_string(2, Player[iPlayer][PlrAbility2HintText], LEN_ABILITY_NAME - 1)
 }
 
 public VisibilityType:_21kc_player_get_visibility(plugin, num_params)

@@ -14,7 +14,7 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define KNIFE_MENUDESC  "KNIFE_NUCLEAR_DESC"
 #define KNIFE_CHATDESC  "KNIFE_NUCLEAR_CHAT"
 
-#define HP				160.0
+#define HP				140.0
 #define GRAVITY			1.0
 #define SPEED			165.0
 #define MINDAMAGE		10.0
@@ -33,6 +33,10 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define RUSH_TIME			5.0
 #define RUSH_SELF_DAMAGE	15.0
 #define RUSH_MIN_HEALTH		31.0
+
+#define HAMMER_PULL_SPEED		2000.0
+#define HAMMER_PULL_SELF_DAMAGE	15.0
+#define HAMMER_ARRIVE_PUSH_FORCE	200.0
 
 #define UNABILITY_TIME		10.0
 #define START_PAIR			0.8
@@ -112,7 +116,8 @@ enum _:PlayerData
 	Float:PairEndTime,
 	PlrHammerEnt,
 	bool:PlrHammerReturning,
-	bool:PlrHammerWindup
+	bool:PlrHammerWindup,
+	bool:PlrHammerRecallBoosted
 }
 
 #define Player[%1][%2]	g_ePlayerData[%1 - 1][%2]
@@ -590,6 +595,10 @@ hammer_throw(iPlayer)
 
 	Player[iPlayer][PlrHammerEnt] = iHammerEnt
 	Player[iPlayer][PlrHammerReturning] = false
+	Player[iPlayer][PlrHammerRecallBoosted] = false
+
+	kc_player_set_ability3_name(iPlayer, "Hammer Pull")
+	kc_player_set_ability2_hint(iPlayer, "NUCLEAR_RETURN_HINT")
 
 	remove_task(TASK_HAMMER_FLIGHT_TIMEOUT + iPlayer)
 	set_task(HAMMER_FLIGHT_TIMEOUT, "task_hammer_flight_timeout", TASK_HAMMER_FLIGHT_TIMEOUT + iPlayer)
@@ -965,21 +974,42 @@ public RG_CBasePlayer_PreThink_Post(iPlayer)
 	{
 		hammer_check_nearby_loop_sound(iPlayer, iHammerEnt)
 
+		new iButton = get_entvar(iPlayer, var_button)
+		new iOldButtons = get_entvar(iPlayer, var_oldbuttons)
+
 		if (Player[iPlayer][PlrHammerReturning])
 		{
 			hammer_update_return_velocity(iPlayer, iHammerEnt)
 		}
 		else
 		{
-			new iButton = get_entvar(iPlayer, var_button)
-			new iOldButtons = get_entvar(iPlayer, var_oldbuttons)
-
 			if ((iButton & IN_USE) && !(iOldButtons & IN_USE))
 				hammer_start_return(iPlayer, iHammerEnt)
 			else if (hammer_touching_field_wall(iHammerEnt))
 				hammer_start_return(iPlayer, iHammerEnt)
 		}
+
+		if ((iButton & IN_RELOAD) && !(iOldButtons & IN_RELOAD))
+			hammer_pull_activate(iPlayer, iHammerEnt)
 	}
+}
+
+hammer_pull_activate(iPlayer, iHammerEnt)
+{
+	if (Player[iPlayer][PlrHammerWindup])
+		return
+
+	if (Float:get_entvar(iPlayer, var_health) < RUSH_MIN_HEALTH)
+		return
+
+	if (!Player[iPlayer][PlrHammerReturning])
+		hammer_start_return(iPlayer, iHammerEnt)
+
+	Player[iPlayer][PlrHammerRecallBoosted] = true
+
+	kc_player_set_abil3_charge(iPlayer, 0.0)
+
+	engfunc(EngFunc_EmitSound, iPlayer, CHAN_AUTO, SOUND_HOTSPEED, 1.0, ATTN_NORM, 0, PITCH_NORM)
 }
 
 bool:hammer_touching_field_wall(iHammerEnt)
@@ -1015,7 +1045,7 @@ hammer_update_return_velocity(iOwner, iHammerEnt)
 	}
 
 	xs_vec_normalize(vVelocity, vVelocity)
-	xs_vec_mul_scalar(vVelocity, HAMMER_RECALL_SPEED, vVelocity)
+	xs_vec_mul_scalar(vVelocity, Player[iOwner][PlrHammerRecallBoosted] ? HAMMER_PULL_SPEED : HAMMER_RECALL_SPEED, vVelocity)
 	set_entvar(iHammerEnt, var_velocity, vVelocity)
 
 	new Float:vAngles[3]
@@ -1027,10 +1057,39 @@ hammer_return_complete(iOwner, iHammerEnt)
 {
 	hammer_stop_loop_sound(iOwner, iHammerEnt)
 
+	new Float:vHammerOrigin[3], Float:vOwnerOrigin[3], Float:vViewOfs[3], Float:vPush[3]
+	get_entvar(iHammerEnt, var_origin, vHammerOrigin)
+	get_entvar(iOwner, var_origin, vOwnerOrigin)
+	get_entvar(iOwner, var_view_ofs, vViewOfs)
+	xs_vec_add(vOwnerOrigin, vViewOfs, vOwnerOrigin)
+
+	xs_vec_sub(vOwnerOrigin, vHammerOrigin, vPush)
+	xs_vec_normalize(vPush, vPush)
+	xs_vec_mul_scalar(vPush, HAMMER_ARRIVE_PUSH_FORCE, vPush)
+
+	new Float:vVelocity[3]
+	get_entvar(iOwner, var_velocity, vVelocity)
+
+	if (vPush[2] > 0.0 && vVelocity[2] < 0.0)
+		vVelocity[2] = 0.0
+
+	xs_vec_add(vVelocity, vPush, vVelocity)
+	set_entvar(iOwner, var_velocity, vVelocity)
+
 	rg_remove_entity(iHammerEnt)
+
+	if (Player[iOwner][PlrHammerRecallBoosted])
+	{
+		new Float:fHealth = Float:get_entvar(iOwner, var_health)
+		set_entvar(iOwner, var_health, floatmax(1.0, fHealth - HAMMER_PULL_SELF_DAMAGE))
+	}
 
 	Player[iOwner][PlrHammerEnt] = 0
 	Player[iOwner][PlrHammerReturning] = false
+	Player[iOwner][PlrHammerRecallBoosted] = false
+
+	kc_player_set_ability3_name(iOwner, "")
+	kc_player_set_ability2_hint(iOwner, "")
 
 	set_pev(iOwner, pev_viewmodel, g_pKnifeVStr)
 	set_pev(iOwner, pev_weaponmodel, g_pKnifePStr)
@@ -1064,6 +1123,10 @@ hammer_cleanup(iPlayer)
 
 	Player[iPlayer][PlrHammerEnt] = 0
 	Player[iPlayer][PlrHammerReturning] = false
+	Player[iPlayer][PlrHammerRecallBoosted] = false
+
+	kc_player_set_ability3_name(iPlayer, "")
+	kc_player_set_ability2_hint(iPlayer, "")
 
 	if (Player[iPlayer][PlrKnife] == g_iKnifeId)
 	{
