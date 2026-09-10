@@ -502,13 +502,8 @@ public Ham_PlayerTakeDamage_Pre(iVictim, iInflictor, iAttacker, Float:fDamage, i
 	{
 		Player[iVictim][PlrWasPunchFallDamage] = true
 
-		if (!Player[iVictim][PlrPunchHitEnemy] && !Player[iVictim][PlrPunchHitWall] && Player[iVictim][PlrPushSpeed] > 0.0)
-		{
-			SetHamParamFloat(4, fDamage / ABIL3_FALLDMGDIVIDER)
-			return HAM_OVERRIDE
-		}
-
-		return HAM_IGNORED
+		SetHamParamFloat(4, fDamage / ABIL3_FALLDMGDIVIDER)
+		return HAM_OVERRIDE
 	}
 
 	if (Player[iVictim][PlrKnife] == g_iKnifeId && Player[iVictim][PlrStealingTarget]
