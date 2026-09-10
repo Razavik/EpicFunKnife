@@ -660,7 +660,8 @@ telekinesis_add_charge(iPlayer, Float:damage)
 	new Float:fNewCharge = floatmin(100.0, kc_player_get_abil1_charge(iPlayer) + damage * 0.25)
 	kc_player_set_abil1_charge(iPlayer, fNewCharge)
 
-	if (fNewCharge >= 100.0 && Player[iPlayer][AbilMode] < MODE_GROUP1_END)
+	if (fNewCharge >= 100.0 && Player[iPlayer][AbilMode] < MODE_GROUP1_END
+		&& (get_entvar(iPlayer, var_button) & IN_ATTACK2))
 	{
 		telekinesis_self(iPlayer)
 		kc_player_set_abil1_charge(iPlayer, 27.78)
