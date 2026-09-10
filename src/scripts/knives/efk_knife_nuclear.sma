@@ -600,7 +600,6 @@ hammer_throw(iPlayer)
 	Player[iPlayer][PlrHammerRecallBoosted] = false
 
 	kc_player_set_ability3_name(iPlayer, "Hammer Pull")
-	kc_player_set_ability2_hint(iPlayer, "NUCLEAR_RETURN_HINT")
 
 	remove_task(TASK_HAMMER_FLIGHT_TIMEOUT + iPlayer)
 	set_task(HAMMER_FLIGHT_TIMEOUT, "task_hammer_flight_timeout", TASK_HAMMER_FLIGHT_TIMEOUT + iPlayer)
@@ -1083,7 +1082,6 @@ hammer_return_complete(iOwner, iHammerEnt)
 	Player[iOwner][PlrHammerRecallBoosted] = false
 
 	kc_player_set_ability3_name(iOwner, "")
-	kc_player_set_ability2_hint(iOwner, "")
 
 	set_pev(iOwner, pev_viewmodel, g_pKnifeVStr)
 	set_pev(iOwner, pev_weaponmodel, g_pKnifePStr)
@@ -1120,7 +1118,6 @@ hammer_cleanup(iPlayer)
 	Player[iPlayer][PlrHammerRecallBoosted] = false
 
 	kc_player_set_ability3_name(iPlayer, "")
-	kc_player_set_ability2_hint(iPlayer, "")
 
 	if (Player[iPlayer][PlrKnife] == g_iKnifeId)
 	{

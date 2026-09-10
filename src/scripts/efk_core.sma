@@ -2020,8 +2020,9 @@ public RG_CBasePlayer_PreThink_Pre(iPlayer)
 		{
 			if (PlayerF[iSubject][PlrAbility1Charge] < 100.0)
 			{
-				iLen += formatex(szChargingText[iLen], charsmax(szChargingText), "^n%L", iPlayer, "ABILITY_CHARGING",
-					floatround((100.0 - PlayerF[iSubject][PlrAbility1Charge]) / KnifeF[iSubjectKnifeId][KNF_ABILITY1_CHARGE], floatround_ceil))
+				if (KnifeF[iSubjectKnifeId][KNF_ABILITY1_CHARGE] > 0.0)
+					iLen += formatex(szChargingText[iLen], charsmax(szChargingText), "^n%L", iPlayer, "ABILITY_CHARGING",
+						floatround((100.0 - PlayerF[iSubject][PlrAbility1Charge]) / KnifeF[iSubjectKnifeId][KNF_ABILITY1_CHARGE], floatround_ceil))
 				fOldCharge[iSubject] = PlayerF[iSubject][PlrAbility1Charge]
 			}
 			else if (fOldCharge[iSubject] < 100.0)
@@ -2061,23 +2062,23 @@ public RG_CBasePlayer_PreThink_Pre(iPlayer)
 					floatround(PlayerF[iSubject][PlrAbility2Charge], floatround_floor))
 
 				if (Player[iSubject][PlrAbility2HintText][0] != EOS)
-					iLen += formatex(szChargingText[iLen], charsmax(szChargingText), " (%L)",
-						iPlayer, Player[iSubject][PlrAbility2HintText])
+					iLen += formatex(szChargingText[iLen], charsmax(szChargingText) - iLen, " (%s)",
+						Player[iSubject][PlrAbility2HintText])
 			}
 
 			if (Knife[iSubjectKnifeId][KNF_ABILITY3_NAME][0] != EOS)
 			{
 				if (Player[iSubject][PlrAbility3NameOverride][0] != EOS)
-					iLen += formatex(szChargingText[iLen], charsmax(szChargingText), "^n%s (R)",
+					iLen += formatex(szChargingText[iLen], charsmax(szChargingText) - iLen, "^n%s (R)",
 						Player[iSubject][PlrAbility3NameOverride])
 				else
-					iLen += formatex(szChargingText[iLen], charsmax(szChargingText), "^n%s (R) (%dpt)",
+					iLen += formatex(szChargingText[iLen], charsmax(szChargingText) - iLen, "^n%s (R) (%dpt)",
 						Knife[iSubjectKnifeId][KNF_ABILITY3_NAME],
 						floatround(PlayerF[iSubject][PlrAbility3Charge], floatround_floor))
 			}
 
 			if (Knife[iSubjectKnifeId][KNF_ABILITY4_NAME][0] != EOS)
-				formatex(szChargingText[iLen], charsmax(szChargingText), "^n%s (F) (%dpt)",
+				formatex(szChargingText[iLen], charsmax(szChargingText) - iLen, "^n%s (F) (%dpt)",
 					Knife[iSubjectKnifeId][KNF_ABILITY4_NAME],
 					floatround(PlayerF[iSubject][PlrAbility4Charge], floatround_floor))
 
