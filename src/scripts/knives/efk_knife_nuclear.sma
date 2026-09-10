@@ -69,6 +69,7 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define HIT_PLAYER_KNOCKBACK	900.0
 
 #define VIEW_SEQ_STAB	4
+#define VIEW_SEQ_THROW	8
 #define VIEW_SEQ_DRAW		3
 #define HAMMER_WINDUP_TIME	0.3
 
@@ -485,7 +486,7 @@ public efk_ability2(iPlayer)
 	kc_player_set_def_maxspeed(iPlayer, THROW_SPEED)
 
 	Player[iPlayer][PlrHammerWindup] = true
-	kc_player_set_view_anim(iPlayer, VIEW_SEQ_STAB)
+	kc_player_set_view_anim(iPlayer, VIEW_SEQ_THROW)
 	rg_set_animation(iPlayer, PLAYER_ATTACK1)
 	set_member(iPlayer, m_szAnimExtention, ANIM_EXT_NO_HAMMER)
 	kc_player_add_glow(iPlayer, HAMMER_GLOW_TIME, HAMMER_GLOW_R, HAMMER_GLOW_G, HAMMER_GLOW_B)
