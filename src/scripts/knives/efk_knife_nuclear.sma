@@ -605,8 +605,6 @@ hammer_throw(iPlayer)
 	set_task(HAMMER_FLIGHT_TIMEOUT, "task_hammer_flight_timeout", TASK_HAMMER_FLIGHT_TIMEOUT + iPlayer)
 
 	hammer_start_loop_sound(iPlayer, iHammerEnt)
-
-	engfunc(EngFunc_EmitSound, iPlayer, CHAN_WEAPON, SOUND_HOTSPEED, 1.0, ATTN_NORM, 0, PITCH_NORM)
 }
 
 hammer_start_loop_sound(iOwner, iHammerEnt)
@@ -1009,8 +1007,6 @@ hammer_pull_activate(iPlayer, iHammerEnt)
 	Player[iPlayer][PlrHammerRecallBoosted] = true
 
 	kc_player_set_abil3_charge(iPlayer, 0.0)
-
-	engfunc(EngFunc_EmitSound, iPlayer, CHAN_AUTO, SOUND_HOTSPEED, 1.0, ATTN_NORM, 0, PITCH_NORM)
 }
 
 bool:hammer_touching_field_wall(iHammerEnt)
@@ -1058,13 +1054,8 @@ hammer_return_complete(iOwner, iHammerEnt)
 {
 	hammer_stop_loop_sound(iOwner, iHammerEnt)
 
-	new Float:vHammerOrigin[3], Float:vOwnerOrigin[3], Float:vViewOfs[3], Float:vPush[3]
-	get_entvar(iHammerEnt, var_origin, vHammerOrigin)
-	get_entvar(iOwner, var_origin, vOwnerOrigin)
-	get_entvar(iOwner, var_view_ofs, vViewOfs)
-	xs_vec_add(vOwnerOrigin, vViewOfs, vOwnerOrigin)
-
-	xs_vec_sub(vOwnerOrigin, vHammerOrigin, vPush)
+	new Float:vPush[3]
+	get_entvar(iHammerEnt, var_velocity, vPush)
 	xs_vec_normalize(vPush, vPush)
 	xs_vec_mul_scalar(vPush, HAMMER_ARRIVE_PUSH_FORCE, vPush)
 
