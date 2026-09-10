@@ -487,6 +487,7 @@ public efk_ability2(iPlayer)
 
 	Player[iPlayer][PlrHammerWindup] = true
 	kc_player_set_view_anim(iPlayer, VIEW_SEQ_THROW)
+	engfunc(EngFunc_EmitSound, iPlayer, CHAN_WEAPON, SOUND_KNIFE_SLASH, 1.0, ATTN_NORM, 0, PITCH_NORM)
 	rg_set_animation(iPlayer, PLAYER_ATTACK1)
 	set_member(iPlayer, m_szAnimExtention, ANIM_EXT_NO_HAMMER)
 	kc_player_add_glow(iPlayer, HAMMER_GLOW_TIME, HAMMER_GLOW_R, HAMMER_GLOW_G, HAMMER_GLOW_B)
@@ -971,7 +972,8 @@ public RG_CBasePlayer_PreThink_Post(iPlayer)
 
 	if (iHammerEnt && !is_nullent(iHammerEnt))
 	{
-		hammer_check_nearby_loop_sound(iPlayer, iHammerEnt)
+		if (get_entvar(iHammerEnt, var_movetype) != MOVETYPE_NONE)
+			hammer_check_nearby_loop_sound(iPlayer, iHammerEnt)
 
 		new iButton = get_entvar(iPlayer, var_button)
 		new iOldButtons = get_entvar(iPlayer, var_oldbuttons)
