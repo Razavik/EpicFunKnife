@@ -1229,7 +1229,7 @@ native Float:kc_player_get_powerdamage(const iPlayer);
 native kc_player_set_powerdamage(const iPlayer, const Float:fPowerDamage);
 
 /**
- * Get the player's speed modifier (Razor's stolen-speed pool)
+ * Get the player's maximum walk speed modifier
  *
  * @param	iPlayer			- Player ID
  * @return					- Addition speed
@@ -1237,7 +1237,7 @@ native kc_player_set_powerdamage(const iPlayer, const Float:fPowerDamage);
 native Float:kc_player_get_powerspeed(const iPlayer);
 
 /**
- * Set the player's speed modifier (Razor's stolen-speed pool)
+ * Set the player's maximum walk speed modifier
  *
  * @param	iPlayer			- Player ID
  * @param 	fPowerSpeed		- Addition speed

@@ -1234,7 +1234,8 @@ public RG_CBasePlayer_Spawn_Post(iPlayer)
 	PlayerF[iPlayer][PlrAbility3LastChange] = fGameTime
 	PlayerF[iPlayer][PlrAbility4LastChange] = fGameTime;
 
-	ClearPlayerGameFlag(iPlayer, PLGF_IN_LOCK_POWER_DAMAGE);
+	ClearPlayerGameFlag(iPlayer, PLGF_IN_LOCK_POWER_DAMAGE | PLGF_IN_LOCK_POWER_SPEED);
+	ClearPlayerGameFlag(iPlayer, PLGF_IN_MARKED_VISIBILITY);
 	PlayerF[iPlayer][PlrPowerDamage] = 0.0
 	PlayerF[iPlayer][PlrPowerDamageDelay] = 0.0
 	PlayerF[iPlayer][PlrPowerSpeed] = 0.0
@@ -1567,7 +1568,8 @@ public RG_CBasePlayer_PreThink_Pre(iPlayer)
 			}
 		}
 
-		if (!CheckPlayerGameFlag(iPlayer, PLGF_IN_LOCK_POWER_DAMAGE) && PlayerF[iPlayer][PlrPowerDamage] != 0.0 && PlayerF[iPlayer][PlrPowerDamageDelay] <= fGameTime)
+		if (!CheckPlayerGameFlag(iPlayer, PLGF_IN_LOCK_POWER_DAMAGE)
+			&& PlayerF[iPlayer][PlrPowerDamage] != 0.0 && PlayerF[iPlayer][PlrPowerDamageDelay] <= fGameTime)
 		{
 			new Float:fPowerDamage = PlayerF[iPlayer][PlrPowerDamage]
 			new Float:fAddPowerDamage = fPowerDamage > 0.0 ? -1.0 : 1.0
@@ -1585,7 +1587,8 @@ public RG_CBasePlayer_PreThink_Pre(iPlayer)
 			PlayerF[iPlayer][PlrPowerDamageDelay] += 0.5
 		}
 
-		if (PlayerF[iPlayer][PlrPowerSpeed] != 0.0 && PlayerF[iPlayer][PlrPowerSpeedDelay] <= fGameTime)
+		if (!CheckPlayerGameFlag(iPlayer, PLGF_IN_LOCK_POWER_SPEED)
+			&& PlayerF[iPlayer][PlrPowerSpeed] != 0.0 && PlayerF[iPlayer][PlrPowerSpeedDelay] <= fGameTime)
 		{
 			new Float:fPowerSpeed = PlayerF[iPlayer][PlrPowerSpeed]
 			new Float:fAddPowerSpeed = fPowerSpeed > 0.0 ? -1.0 : 1.0
@@ -2037,10 +2040,10 @@ public RG_CBasePlayer_PreThink_Pre(iPlayer)
 		}
 
 		if (PlayerF[iSubject][PlrPowerDamage] != 0.0)
-			iLen += formatex(szChargingText[iLen], charsmax(szChargingText) - iLen, "^n%L", iPlayer, "RAZOR_POWER_DAMAGE", floatround(PlayerF[iSubject][PlrPowerDamage], floatround_floor))
+			iLen += formatex(szChargingText[iLen], charsmax(szChargingText) - iLen, "^n%L", iPlayer, "POWER_DAMAGE", floatround(PlayerF[iSubject][PlrPowerDamage], floatround_floor))
 
 		if (PlayerF[iSubject][PlrPowerSpeed] != 0.0)
-			iLen += formatex(szChargingText[iLen], charsmax(szChargingText) - iLen, "^n%L", iPlayer, "RAZOR_POWER_SPEED", floatround(PlayerF[iSubject][PlrPowerSpeed], floatround_floor))
+			iLen += formatex(szChargingText[iLen], charsmax(szChargingText) - iLen, "^n%L", iPlayer, "POWER_SPEED", floatround(PlayerF[iSubject][PlrPowerSpeed], floatround_floor))
 
 		if (szChargingText[0] && !g_bIsRoundEnded)
 		{
@@ -2788,7 +2791,7 @@ public fw_AddToFullPack(es_state, e, ent, host, hostflags, player)
 		{
 			if (Player[ent][PlrVisibility] == VIS_INVISION)
 			{
-				if (CheckPlayerGameFlag(ent, PLGF_IN_LOCK_POWER_DAMAGE) || (iFlags & FL_INWATER))
+				if (CheckPlayerGameFlag(ent, PLGF_IN_MARKED_VISIBILITY) || (iFlags & FL_INWATER))
 					set_es(es_state, ES_RenderAmt, INVISIBLE_AMT_INWATER)
 				else
 					set_es(es_state, ES_Effects, EF_NODRAW)
@@ -2955,7 +2958,7 @@ public fw_AddToFullPack(es_state, e, ent, host, hostflags, player)
 
 			if (iVisibility == VIS_INVISION)
 			{
-				if (CheckPlayerGameFlag(i, PLGF_IN_LOCK_POWER_DAMAGE) || (get_entvar(i, var_flags) & FL_INWATER))
+				if (CheckPlayerGameFlag(i, PLGF_IN_MARKED_VISIBILITY) || (get_entvar(i, var_flags) & FL_INWATER))
 					set_es(es_state, ES_RenderAmt, INVISIBLE_AMT_INWATER)
 				else
 					set_es(es_state, ES_Effects, EF_NODRAW)
@@ -2990,7 +2993,7 @@ public fw_AddToFullPack(es_state, e, ent, host, hostflags, player)
 
 			if (Player[i][PlrVisibility] == VIS_INVISION)
 			{
-				if (CheckPlayerGameFlag(i, PLGF_IN_LOCK_POWER_DAMAGE) || (get_entvar(i, var_flags) & FL_INWATER))
+				if (CheckPlayerGameFlag(i, PLGF_IN_MARKED_VISIBILITY) || (get_entvar(i, var_flags) & FL_INWATER))
 					set_es(es_state, ES_RenderAmt, INVISIBLE_AMT_INWATER)
 				else
 					set_es(es_state, ES_Effects, EF_NODRAW)
@@ -7470,8 +7473,8 @@ public _21kc_player_set_powerspeed(plugin, num_params)
 	new iPlayer = get_param(1)
 	new Float:fOldPowerSpeed = PlayerF[iPlayer][PlrPowerSpeed]
 	new Float:fNewPowerSpeed = get_param_f(2)
-	PlayerF[iPlayer][PlrPowerSpeed] = fNewPowerSpeed
 
+	PlayerF[iPlayer][PlrPowerSpeed] = fNewPowerSpeed
 	PlayerF[iPlayer][PlrPowerSpeedDelay] = (fNewPowerSpeed > fOldPowerSpeed && fNewPowerSpeed > 0.0)
 		? get_gametime() + POWERSPEED_GAIN_GRACE
 		: get_gametime() + 0.5
