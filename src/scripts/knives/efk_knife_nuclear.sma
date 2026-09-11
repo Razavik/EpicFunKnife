@@ -125,7 +125,7 @@ enum _:PlayerData
 
 new
 	g_iKnifeId, g_ePlayerData[MAX_PLAYERS][PlayerData],
-	g_pSteamSpr, g_pBallSmokeSpr, g_pShockWaveSpr,
+	g_pBallSmokeSpr,
 	g_pKnifePMdl, g_pKnifeVStr, g_pKnifePStr, g_pRockGibsMdl, g_pLightningSpr,
 	Float:g_fHammerHitDelay[MAX_PLAYERS + 1],
 	bool:g_bHammerReturnHit[MAX_PLAYERS + 1][MAX_PLAYERS + 1],
@@ -156,9 +156,7 @@ public plugin_precache()
 
 	precache_generic(fmt("sprites/%s.txt", KNIFE_CLASSNAME))
 
-	g_pSteamSpr = precache_model("sprites/steam1.spr")
 	g_pBallSmokeSpr = precache_model("sprites/ballsmoke.spr")
-	g_pShockWaveSpr = precache_model("sprites/shockwave.spr")
 	g_pRockGibsMdl = precache_model("models/rockgibs.mdl")
 	g_pLightningSpr = precache_model("sprites/lgtning.spr")
 }
@@ -284,8 +282,6 @@ public fw_Player_Damage(iVictim, iInflictor, iAttacker, Float:fDamage, iFlags)
 	{
 		if (iFlags & DMG_BURN)
 			return HAM_IGNORED
-
-		kc_player_set_abil2_charge(iVictim, floatmin(85.0, kc_player_get_abil2_charge(iVictim)))
 
 		if ((iFlags & DMG_FALL) && iVictim == iInflictor && !entity_in_any_web(iVictim) && !Player[iVictim][PlrHammerEnt])
 		{
