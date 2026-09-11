@@ -669,9 +669,7 @@ coffin_release(const iPlayer, const iWeapon)
 	if (is_user_has_knife(iPlayer) && g_ePlayerData[iPlayer][IN_COFFIN] && fCoffinTime > COFFIN_DELAY)
 	{
 		coffin_set_status(iPlayer, false)
-
-		new Float:fRushTime = fCoffinTime * 2.0
-		kc_player_rush(iPlayer, 300.0, fRushTime)
+		kc_player_rush(iPlayer, 300.0, fCoffinTime * 2.0)
 
 		kc_player_add_glow(iPlayer, fCoffinTime * 2.0, 255, 0, 0)
 		engfunc(EngFunc_EmitSound, iPlayer, CHAN_STATIC, SOUND_SHADOWJUMP, 1.0, ATTN_NORM, 0, PITCH_NORM)
