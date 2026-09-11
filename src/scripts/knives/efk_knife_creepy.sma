@@ -670,7 +670,6 @@ coffin_release(const iPlayer, const iWeapon)
 	{
 		coffin_set_status(iPlayer, false)
 		kc_player_rush(iPlayer, 300.0, fCoffinTime * 2.0)
-
 		kc_player_add_glow(iPlayer, fCoffinTime * 2.0, 255, 0, 0)
 		engfunc(EngFunc_EmitSound, iPlayer, CHAN_STATIC, SOUND_SHADOWJUMP, 1.0, ATTN_NORM, 0, PITCH_NORM)
 
