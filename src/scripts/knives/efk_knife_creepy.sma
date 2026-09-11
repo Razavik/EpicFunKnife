@@ -1579,7 +1579,7 @@ bool:allow_long_jump(iPlayer)
 	if (!(get_entvar(iPlayer, var_flags) & FL_ONGROUND) || fm_get_speed(iPlayer) < 100)
 		return false
 
-	if (Float:get_entvar(iPlayer, var_maxspeed) < SPEED)
+	if (is_player_slowed(iPlayer, SPEED))
 		return false
 
 	return true
