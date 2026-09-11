@@ -810,7 +810,7 @@ public efk_ability(iPlayer, iTarget)
 	Player[iPlayer][PlrStealingTarget] = iTarget
 	Player[iPlayer][PlrStealDelay] = get_gametime() + 0.5
 
-	kc_player_set_game_flag(iPlayer, PLGF_IN_LOCK_POWER_DAMAGE)
+	kc_player_set_game_flag(iPlayer, PLGF_IN_LOCK_POWER_DAMAGE | PLGF_IN_MARKED_VISIBILITY)
 
 	return PLUGIN_CONTINUE
 }
@@ -1138,8 +1138,8 @@ out_stealing(const iPlayer, const iTarget)
 	remove_stealing_icon(iPlayer)
 	remove_stealing_icon(iTarget)
 
-	kc_player_unset_game_flag(iPlayer, PLGF_IN_LOCK_POWER_DAMAGE)
-	kc_player_unset_game_flag(iTarget, PLGF_IN_LOCK_POWER_DAMAGE)
+	kc_player_unset_game_flag(iPlayer, PLGF_IN_LOCK_POWER_DAMAGE | PLGF_IN_MARKED_VISIBILITY)
+	kc_player_unset_game_flag(iTarget, PLGF_IN_LOCK_POWER_DAMAGE | PLGF_IN_MARKED_VISIBILITY)
 
 	Player[iPlayer][PlrStealingTarget] = 0
 }
