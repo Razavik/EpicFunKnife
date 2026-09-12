@@ -1051,19 +1051,22 @@ hammer_return_complete(iOwner, iHammerEnt)
 {
 	hammer_stop_loop_sound(iOwner, iHammerEnt)
 
-	new Float:vPush[3]
-	get_entvar(iHammerEnt, var_velocity, vPush)
-	xs_vec_normalize(vPush, vPush)
-	xs_vec_mul_scalar(vPush, HAMMER_ARRIVE_PUSH_FORCE, vPush)
+	if (Player[iOwner][PlrHammerRecallBoosted])
+	{
+		new Float:vPush[3]
+		get_entvar(iHammerEnt, var_velocity, vPush)
+		xs_vec_normalize(vPush, vPush)
+		xs_vec_mul_scalar(vPush, HAMMER_ARRIVE_PUSH_FORCE, vPush)
 
-	new Float:vVelocity[3]
-	get_entvar(iOwner, var_velocity, vVelocity)
+		new Float:vVelocity[3]
+		get_entvar(iOwner, var_velocity, vVelocity)
 
-	if (vPush[2] > 0.0 && vVelocity[2] < 0.0)
-		vVelocity[2] = 0.0
+		if (vPush[2] > 0.0 && vVelocity[2] < 0.0)
+			vVelocity[2] = 0.0
 
-	xs_vec_add(vVelocity, vPush, vVelocity)
-	set_entvar(iOwner, var_velocity, vVelocity)
+		xs_vec_add(vVelocity, vPush, vVelocity)
+		set_entvar(iOwner, var_velocity, vVelocity)
+	}
 
 	rg_remove_entity(iHammerEnt)
 
