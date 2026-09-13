@@ -282,6 +282,7 @@ enum _:PlayerProperties
 	PlrDeathReasonText[LEN_DEATH_REASON],
 	bool:PlrDeathReasonApplied,
 	PlrAbility3NameOverride[LEN_ABILITY_NAME],
+	PlrAbility2NameOverride[LEN_ABILITY_NAME],
 	PlrAbility2HintText[LEN_ABILITY_NAME],
 	PlrHpBarEnt,
 	PlrBlindEffEnt,
@@ -675,6 +676,7 @@ public plugin_natives()
 	register_native("kc_player_set_death_reason", "_21kc_player_set_death_reason")
 
 	register_native("kc_player_set_ability3_name", "_21kc_player_set_ability3_name")
+	register_native("kc_player_set_ability2_name", "_21kc_player_set_ability2_name")
 
 	register_native("kc_player_set_ability2_hint", "_21kc_player_set_ability2_hint")
 
@@ -2060,13 +2062,21 @@ public RG_CBasePlayer_PreThink_Pre(iPlayer)
 
 			if (Knife[iSubjectKnifeId][KNF_ABILITY2_NAME][0] != EOS)
 			{
-				iLen = formatex(szChargingText, charsmax(szChargingText), "%s (E) (%dpt)",
-					Knife[iSubjectKnifeId][KNF_ABILITY2_NAME],
-					floatround(PlayerF[iSubject][PlrAbility2Charge], floatround_floor))
+				if (Player[iSubject][PlrAbility2NameOverride][0] != EOS)
+				{
+					iLen = formatex(szChargingText, charsmax(szChargingText), "%s (E)",
+						Player[iSubject][PlrAbility2NameOverride])
+				}
+				else
+				{
+					iLen = formatex(szChargingText, charsmax(szChargingText), "%s (E) (%dpt)",
+						Knife[iSubjectKnifeId][KNF_ABILITY2_NAME],
+						floatround(PlayerF[iSubject][PlrAbility2Charge], floatround_floor))
 
-				if (Player[iSubject][PlrAbility2HintText][0] != EOS)
-					iLen += formatex(szChargingText[iLen], charsmax(szChargingText) - iLen, " (%s)",
-						Player[iSubject][PlrAbility2HintText])
+					if (Player[iSubject][PlrAbility2HintText][0] != EOS)
+						iLen += formatex(szChargingText[iLen], charsmax(szChargingText) - iLen, " (%s)",
+							Player[iSubject][PlrAbility2HintText])
+				}
 			}
 
 			if (Knife[iSubjectKnifeId][KNF_ABILITY3_NAME][0] != EOS)
@@ -4896,6 +4906,7 @@ set_knife_params(iPlayer, iKnifeId)
 	}
 
 	Player[iPlayer][PlrAbility3NameOverride][0] = EOS
+	Player[iPlayer][PlrAbility2NameOverride][0] = EOS
 	Player[iPlayer][PlrAbility2HintText][0] = EOS
 	Player[iPlayer][PlrKnife] = iKnifeId
 }
@@ -8700,6 +8711,12 @@ public _21kc_player_set_ability3_name(plugin, num_params)
 {
 	new iPlayer = get_param(1)
 	get_string(2, Player[iPlayer][PlrAbility3NameOverride], LEN_ABILITY_NAME - 1)
+}
+
+public _21kc_player_set_ability2_name(plugin, num_params)
+{
+	new iPlayer = get_param(1)
+	get_string(2, Player[iPlayer][PlrAbility2NameOverride], LEN_ABILITY_NAME - 1)
 }
 
 public _21kc_player_set_ability2_hint(plugin, num_params)

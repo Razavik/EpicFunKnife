@@ -864,6 +864,17 @@ native kc_player_set_death_reason(const iPlayer, const szMessage[]);
 native kc_player_set_ability3_name(const iPlayer, const szName[]);
 
 /**
+ * Override the ability2 (E) display name for this player only.
+ * Pass an empty string to reset to the knife's default name.
+ * While overridden, the charge percentage/hint text is not shown.
+ *
+ * @param 	iPlayer			- Player ID
+ * @param	szName			- Ability name override (empty = reset)
+ * @noreturn
+ */
+native kc_player_set_ability2_name(const iPlayer, const szName[]);
+
+/**
  * Append a short hint in parentheses after the ability2 (E) charge display, for this player only.
  * Pass an empty string to clear it.
  * Resolved through %L against the viewer's language, so pass a lang key, not raw text.
