@@ -23,7 +23,7 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define ABIL1_NAME		"Nuclear"
 #define ABIL1_CHARGE	5.2632
 
-#define ABIL2_NAME		"Hammer"
+#define ABIL2_NAME		"Hammer Toss"
 #define ABIL2_CHARGE	8.3333
 
 #define ABIL3_NAME		"Hot Speed"
@@ -595,8 +595,8 @@ hammer_throw(iPlayer)
 	Player[iPlayer][PlrHammerReturning] = false
 	Player[iPlayer][PlrHammerRecallBoosted] = false
 
-	kc_player_set_ability3_name(iPlayer, "Hammer Pull")
-	kc_player_set_ability2_name(iPlayer, "Recall")
+	kc_player_set_ability3_name(iPlayer, "Violent Recall")
+	kc_player_set_ability2_name(iPlayer, "Quiet Recall")
 
 	remove_task(TASK_HAMMER_FLIGHT_TIMEOUT + iPlayer)
 	set_task(HAMMER_FLIGHT_TIMEOUT, "task_hammer_flight_timeout", TASK_HAMMER_FLIGHT_TIMEOUT + iPlayer)
