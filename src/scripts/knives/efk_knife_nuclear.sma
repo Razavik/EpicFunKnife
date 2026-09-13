@@ -596,7 +596,7 @@ hammer_throw(iPlayer)
 	Player[iPlayer][PlrHammerRecallBoosted] = false
 
 	kc_player_set_ability3_name(iPlayer, "Violent Recall")
-	kc_player_set_ability2_name(iPlayer, "Quiet Recall")
+	kc_player_set_ability2_name(iPlayer, "Recall")
 
 	remove_task(TASK_HAMMER_FLIGHT_TIMEOUT + iPlayer)
 	set_task(HAMMER_FLIGHT_TIMEOUT, "task_hammer_flight_timeout", TASK_HAMMER_FLIGHT_TIMEOUT + iPlayer)
