@@ -124,6 +124,7 @@ enum _:PlayerData
 	Float:PlrLastVelocity[3],
 	PlrRazorBeam,
 	PlrSphereEnt,
+	bool:PlrSphereJustExploded,
 	PlrFallDamageRestore,
 	Float:PlrFallDamageRestoreTime,
 	bool:PlrWasPunchFallDamage
@@ -316,8 +317,14 @@ public RG_CBasePlayer_PreThink_Post(iPlayer)
 		if (get_entvar(iSphereEnt, var_owner) != iPlayer)
 			Player[iPlayer][PlrSphereEnt] = 0
 		else if ((get_entvar(iPlayer, var_button) & iSphereExplodeButton) && !(get_entvar(iPlayer, var_oldbuttons) & iSphereExplodeButton))
+		{
 			sphere_think(iSphereEnt)
+			Player[iPlayer][PlrSphereJustExploded] = true
+		}
 	}
+
+	if (Player[iPlayer][PlrSphereJustExploded] && !(get_entvar(iPlayer, var_button) & IN_USE))
+		Player[iPlayer][PlrSphereJustExploded] = false
 
 	if (Player[iPlayer][PlrInPush])
 	{
@@ -818,6 +825,9 @@ public efk_ability(iPlayer, iTarget)
 public efk_ability2(iPlayer)
 {
 	if (Player[iPlayer][PlrSphereEnt])
+		return PLUGIN_HANDLED
+
+	if (Player[iPlayer][PlrSphereJustExploded])
 		return PLUGIN_HANDLED
 
 	new Float:fPowerSpeed = kc_player_get_powerspeed(iPlayer)
