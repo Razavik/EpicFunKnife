@@ -118,7 +118,8 @@ enum _:PlayerData
 	PlrHammerEnt,
 	bool:PlrHammerReturning,
 	bool:PlrHammerWindup,
-	bool:PlrHammerRecallBoosted
+	bool:PlrHammerRecallBoosted,
+	PlrHammerStuckCoffin
 }
 
 #define Player[%1][%2]	g_ePlayerData[%1 - 1][%2]
@@ -594,6 +595,7 @@ hammer_throw(iPlayer)
 	Player[iPlayer][PlrHammerEnt] = iHammerEnt
 	Player[iPlayer][PlrHammerReturning] = false
 	Player[iPlayer][PlrHammerRecallBoosted] = false
+	Player[iPlayer][PlrHammerStuckCoffin] = 0
 
 	kc_player_set_ability3_name(iPlayer, "Force Recall")
 	kc_player_set_ability2_name(iPlayer, "Recall")
@@ -700,19 +702,11 @@ public hammer_touch(iHammerEnt, iOther)
 
 	if (iOther > 0 && iOther <= MaxClients)
 	{
-		if (is_user_alive(iOther) && !kc_player_check_game_flag(iOther, PLGF_IN_UNABILITY))
+		if (is_user_alive(iOther))
 		{
 			if (get_user_team(iOther) != get_user_team(iOwner))
-			{
-				if (kc_player_apply_concentblock(iOther, iHammerEnt, ATTACK_HEAVINESS_LOW, 150.0, true))
-				{
-					if (!Player[iOwner][PlrHammerReturning])
-						hammer_start_return(iOwner, iHammerEnt)
-				}
-				else
-					hammer_damage_player(iHammerEnt, iOwner, iOther)
-			}
-			else if (kc_player_in_freeze(iOther))
+				hammer_damage_player(iHammerEnt, iOwner, iOther)
+			else if (!kc_player_check_game_flag(iOther, PLGF_IN_UNABILITY) && kc_player_in_freeze(iOther))
 				hammer_break_ice(iHammerEnt, iOther)
 		}
 
@@ -722,10 +716,7 @@ public hammer_touch(iHammerEnt, iOther)
 	new szClassname[32]
 	get_entvar(iOther, var_classname, szClassname, charsmax(szClassname))
 	if (equal(szClassname, COFFIN_CLASSNAME))
-	{
-		engfunc(EngFunc_EmitSound, iHammerEnt, CHAN_STATIC, random(2) ? SOUND_KNIFE_HIT1 : SOUND_KNIFE_HIT2, 1.0, ATTN_NORM, 0, PITCH_NORM)
-		return HC_CONTINUE
-	}
+		Player[iOwner][PlrHammerStuckCoffin] = iOther
 
 	switch (get_entvar(iOther, var_impulse))
 	{
@@ -746,6 +737,19 @@ public hammer_touch(iHammerEnt, iOther)
 		case IMPULSE_KUNAI, IMPULSE_RAZOR_SPHERE:
 		{
 			dllfunc(DLLFunc_Think, iOther)
+			engfunc(EngFunc_EmitSound, iHammerEnt, CHAN_STATIC, random(2) ? SOUND_KNIFE_HIT1 : SOUND_KNIFE_HIT2, 1.0, ATTN_NORM, 0, PITCH_NORM)
+			return HC_CONTINUE
+		}
+		case IMPULSE_FIELD_WALL:
+		{
+			if (get_entvar(iOther, var_skin) + 1 == get_user_team(iOwner))
+				return HC_CONTINUE
+		}
+		case IMPULSE_BUG:
+		{
+			if (get_entvar(iOther, var_skin) + 1 != get_user_team(iOwner))
+				ExecuteHamB(Ham_TakeDamage, iOther, iHammerEnt, iOwner, 10.0, DMG_CLUB)
+
 			engfunc(EngFunc_EmitSound, iHammerEnt, CHAN_STATIC, random(2) ? SOUND_KNIFE_HIT1 : SOUND_KNIFE_HIT2, 1.0, ATTN_NORM, 0, PITCH_NORM)
 			return HC_CONTINUE
 		}
@@ -966,6 +970,13 @@ public RG_CBasePlayer_PreThink_Post(iPlayer)
 
 	new iHammerEnt = Player[iPlayer][PlrHammerEnt]
 
+	if (iHammerEnt && (is_nullent(iHammerEnt)
+		|| (get_entvar(iHammerEnt, var_flags) & FL_KILLME)))
+	{
+		hammer_cleanup(iPlayer)
+		iHammerEnt = 0
+	}
+
 	if (iHammerEnt && !is_nullent(iHammerEnt))
 	{
 		if (get_entvar(iHammerEnt, var_movetype) != MOVETYPE_NONE)
@@ -982,7 +993,14 @@ public RG_CBasePlayer_PreThink_Post(iPlayer)
 		{
 			if ((iButton & IN_USE) && !(iOldButtons & IN_USE))
 				hammer_start_return(iPlayer, iHammerEnt)
+			else if (get_entvar(iHammerEnt, var_movetype) != MOVETYPE_NONE
+				&& hammer_touching_coffin(iHammerEnt))
+				hammer_touch(iHammerEnt, Player[iPlayer][PlrHammerStuckCoffin])
 			else if (hammer_touching_field_wall(iHammerEnt))
+				hammer_start_return(iPlayer, iHammerEnt)
+			else if (Player[iPlayer][PlrHammerStuckCoffin]
+				&& (!is_entity(Player[iPlayer][PlrHammerStuckCoffin])
+					|| (get_entvar(Player[iPlayer][PlrHammerStuckCoffin], var_flags) & FL_KILLME)))
 				hammer_start_return(iPlayer, iHammerEnt)
 		}
 
@@ -1005,6 +1023,30 @@ hammer_pull_activate(iPlayer, iHammerEnt)
 	Player[iPlayer][PlrHammerRecallBoosted] = true
 
 	kc_player_set_abil3_charge(iPlayer, 0.0)
+}
+
+bool:hammer_touching_coffin(iHammerEnt)
+{
+	new Float:vOrigin[3]
+	get_entvar(iHammerEnt, var_origin, vOrigin)
+
+	new iEnt = 0
+	while ((iEnt = engfunc(EngFunc_FindEntityInSphere, iEnt, vOrigin, 24.0)))
+	{
+		if (iEnt == iHammerEnt)
+			continue
+
+		new szClassname[32]
+		get_entvar(iEnt, var_classname, szClassname, charsmax(szClassname))
+		if (equal(szClassname, COFFIN_CLASSNAME))
+		{
+			new iOwner = get_entvar(iHammerEnt, var_owner)
+			Player[iOwner][PlrHammerStuckCoffin] = iEnt
+			return true
+		}
+	}
+
+	return false
 }
 
 bool:hammer_touching_field_wall(iHammerEnt)
@@ -1080,6 +1122,7 @@ hammer_return_complete(iOwner, iHammerEnt)
 	Player[iOwner][PlrHammerEnt] = 0
 	Player[iOwner][PlrHammerReturning] = false
 	Player[iOwner][PlrHammerRecallBoosted] = false
+	Player[iOwner][PlrHammerStuckCoffin] = 0
 
 	kc_player_set_ability3_name(iOwner, "")
 	kc_player_set_ability2_name(iOwner, "")
@@ -1117,6 +1160,7 @@ hammer_cleanup(iPlayer)
 	Player[iPlayer][PlrHammerEnt] = 0
 	Player[iPlayer][PlrHammerReturning] = false
 	Player[iPlayer][PlrHammerRecallBoosted] = false
+	Player[iPlayer][PlrHammerStuckCoffin] = 0
 
 	kc_player_set_ability3_name(iPlayer, "")
 	kc_player_set_ability2_name(iPlayer, "")
