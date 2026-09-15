@@ -48,11 +48,12 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define HAMMER_RECALL_SPEED		1200.0
 #define HAMMER_AUTO_RETURN_DELAY	6.0
 
-#define HAMMER_SEQ_IDLE		0
-#define HAMMER_SEQ_ROTATE	1
+#define HAMMER_SEQ_IDLE			0
+#define HAMMER_SEQ_ROTATE_RIGHT	1
+#define HAMMER_SEQ_ROTATE_LEFT	2
 
 #define HAMMER_BODY_EFFECT_OFF	0
-#define HAMMER_BODY_EFFECT_ON	1
+#define HAMMER_BODY_EFFECT_ON	3
 
 
 #define HAMMER_GLOW_R	255
@@ -77,6 +78,9 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define TASK_HAMMER_HIDE_VIEWMODEL	32675
 #define TASK_HAMMER_FLIGHT_TIMEOUT	32676
 #define TASK_HAMMER_LOOP_SOUND	32677
+#define TASK_HAMMER_RECLAIM_KNIFE	32678
+
+#define HAMMER_RECLAIM_KNIFE_POLL	0.1
 
 #define HAMMER_FLIGHT_TIMEOUT	12.0
 #define HAMMER_LOOP_SOUND_DURATION	2.3
@@ -93,7 +97,7 @@ new const ANIM_EXT_NO_HAMMER[]	= "claws"
 new const SZ_INFO_TARGET[]		= "info_target"
 new const COFFIN_CLASSNAME[]	= "next21_coffin"
 
-new const MODEL_HAMMER[]		= "models/next21_efk/hammer_b01.mdl"
+new const MODEL_HAMMER[]		= "models/next21_efk/hammer_b02.mdl"
 
 new const SOUND_KNIFE_DEPLOY[]	= "next21_efk/nuclear_knife_deploy.wav"
 new const SOUND_KNIFE_HIT1[]	= "next21_efk/nuclear_knife_hit1.wav"
@@ -128,7 +132,7 @@ new
 	g_iKnifeId, g_ePlayerData[MAX_PLAYERS][PlayerData],
 	g_pBallSmokeSpr,
 	g_pKnifePMdl, g_pKnifeVStr, g_pKnifePStr, g_pRockGibsMdl, g_pLightningSpr,
-	Float:g_fHammerHitDelay[MAX_PLAYERS + 1],
+	bool:g_bHammerThrowHit[MAX_PLAYERS + 1][MAX_PLAYERS + 1],
 	bool:g_bHammerReturnHit[MAX_PLAYERS + 1][MAX_PLAYERS + 1],
 	bool:g_bHammerLoopNearPlayed[MAX_PLAYERS + 1][MAX_PLAYERS + 1]
 
@@ -189,7 +193,10 @@ public plugin_init()
 	RegisterHam(Ham_TakeDamage, "player", "fw_Player_PostDamage", true)
 	RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_knife", "fw_Hammer_PrimaryAttack_Pre")
 	RegisterHam(Ham_Weapon_SecondaryAttack, "weapon_knife", "fw_Hammer_PrimaryAttack_Pre")
-	RegisterHam(Ham_Item_Deploy, "weapon_knife", "fw_Knife_Deploy_Post", true)
+	RegisterHam(Ham_Item_Deploy, "weapon_knife", "fw_Knife_Deploy_Pre")
+	RegisterHam(Ham_Item_CanDeploy, "weapon_hegrenade", "fw_OtherWeapon_CanDeploy_Pre")
+	RegisterHam(Ham_Item_CanDeploy, "weapon_flashbang", "fw_OtherWeapon_CanDeploy_Pre")
+	RegisterHam(Ham_Item_CanDeploy, "weapon_smokegrenade", "fw_OtherWeapon_CanDeploy_Pre")
 
 	kc_knife_set_sound(g_iKnifeId, "weapons/knife_deploy1.wav", SOUND_KNIFE_DEPLOY)
 	kc_knife_set_sound(g_iKnifeId, "weapons/knife_hit1.wav", SOUND_KNIFE_HIT1)
@@ -430,6 +437,7 @@ public efk_change_knife_core_post(iPlayer, iKnifeId)
 	{
 		hammer_cleanup(iPlayer)
 		hammer_cancel_windup(iPlayer)
+		remove_task(TASK_HAMMER_RECLAIM_KNIFE + iPlayer)
 	}
 
 	Player[iPlayer][PlrKnife] = iKnifeId
@@ -479,10 +487,17 @@ public efk_ability2(iPlayer)
 	if (Player[iPlayer][PlrHammerWindup])
 		return PLUGIN_HANDLED
 
+	if (get_user_weapon(iPlayer) != CSW_KNIFE)
+		return PLUGIN_HANDLED
+
+	if (Float:get_member(iPlayer, m_flNextAttack) > 0.0)
+		return PLUGIN_HANDLED
+
 	kc_player_slow(iPlayer, 1.0, 0.0)
 	kc_player_set_def_maxspeed(iPlayer, THROW_SPEED)
 
 	Player[iPlayer][PlrHammerWindup] = true
+	kc_player_set_game_flag(iPlayer, PLGF_IS_DISABLED_INVENTORY)
 	kc_player_set_view_anim(iPlayer, VIEW_SEQ_THROW)
 	engfunc(EngFunc_EmitSound, iPlayer, CHAN_WEAPON, SOUND_KNIFE_SLASH, 1.0, ATTN_NORM, 0, PITCH_NORM)
 	rg_set_animation(iPlayer, PLAYER_ATTACK1)
@@ -541,6 +556,9 @@ hammer_cancel_windup(iPlayer)
 	Player[iPlayer][PlrHammerWindup] = false
 	remove_task(TASK_HAMMER_THROW + iPlayer)
 	kc_player_sub_glow(iPlayer, HAMMER_GLOW_R, HAMMER_GLOW_G, HAMMER_GLOW_B)
+
+	if (!Player[iPlayer][PlrHammerEnt])
+		kc_player_unset_game_flag(iPlayer, PLGF_IS_DISABLED_INVENTORY)
 }
 
 hammer_throw(iPlayer)
@@ -549,6 +567,7 @@ hammer_throw(iPlayer)
 
 	kc_player_set_abil2_charge(iPlayer, 0.0)
 
+	arrayset(g_bHammerThrowHit[iPlayer], false, MAX_PLAYERS + 1)
 	arrayset(g_bHammerReturnHit[iPlayer], false, MAX_PLAYERS + 1)
 	arrayset(g_bHammerLoopNearPlayed[iPlayer], false, MAX_PLAYERS + 1)
 
@@ -582,7 +601,7 @@ hammer_throw(iPlayer)
 	set_entvar(iHammerEnt, var_angles, vAngles)
 
 	set_entvar(iHammerEnt, var_body, HAMMER_BODY_EFFECT_ON)
-	set_entvar(iHammerEnt, var_sequence, HAMMER_SEQ_ROTATE)
+	set_entvar(iHammerEnt, var_sequence, HAMMER_SEQ_ROTATE_RIGHT)
 	set_entvar(iHammerEnt, var_framerate, 1.0)
 	set_entvar(iHammerEnt, var_animtime, get_gametime())
 
@@ -795,11 +814,10 @@ hammer_damage_player(iHammerEnt, iOwner, iTarget)
 	}
 	else
 	{
-		new Float:fGameTime = get_gametime()
-		if (g_fHammerHitDelay[iTarget] > fGameTime)
+		if (g_bHammerThrowHit[iOwner][iTarget])
 			return
 
-		g_fHammerHitDelay[iTarget] = fGameTime + 0.5
+		g_bHammerThrowHit[iOwner][iTarget] = true
 	}
 
 	new Float:vHammerOrigin[3]
@@ -826,6 +844,7 @@ hammer_damage_player(iHammerEnt, iOwner, iTarget)
 	set_entvar(iTarget, var_velocity, vVelocity)
 	kc_player_set_bair(iTarget, FL_BAIR_NORMAL | FL_BAIR_CLIMB)
 	kc_player_unfreeze(iTarget)
+	kc_player_set_override_attacker(iTarget, iOwner, 4.0)
 
 	kc_player_set_death_reason(iTarget, "DEATH_REASON_EXPLODE")
 	set_member(iTarget, m_LastHitGroup, HIT_GENERIC)
@@ -920,8 +939,10 @@ hammer_hit_world(iHammerEnt, iOwner)
 		if (get_user_team(iTarget) == iTeam)
 			continue
 
-		if (g_fHammerHitDelay[iTarget] > get_gametime())
+		if (g_bHammerThrowHit[iOwner][iTarget])
 			continue
+
+		g_bHammerThrowHit[iOwner][iTarget] = true
 
 		get_entvar(iTarget, var_origin, vTargetOrigin)
 		xs_vec_sub(vTargetOrigin, vOrigin, vTargetVelocity)
@@ -969,7 +990,7 @@ hammer_start_return(iOwner, iHammerEnt)
 	set_entvar(iHammerEnt, var_movetype, MOVETYPE_NOCLIP)
 
 	set_entvar(iHammerEnt, var_body, HAMMER_BODY_EFFECT_ON)
-	set_entvar(iHammerEnt, var_sequence, HAMMER_SEQ_ROTATE)
+	set_entvar(iHammerEnt, var_sequence, HAMMER_SEQ_ROTATE_RIGHT)
 	set_entvar(iHammerEnt, var_framerate, 1.0)
 	set_entvar(iHammerEnt, var_animtime, get_gametime())
 
@@ -1144,18 +1165,47 @@ hammer_return_complete(iOwner, iHammerEnt)
 	kc_player_set_ability3_name(iOwner, "")
 	kc_player_set_ability2_name(iOwner, "")
 
+	kc_player_sub_glow(iOwner, HAMMER_GLOW_R, HAMMER_GLOW_G, HAMMER_GLOW_B)
+	kc_player_set_def_maxspeed(iOwner, SPEED)
+	kc_player_unset_game_flag(iOwner, PLGF_IS_DISABLED_INVENTORY)
+
+	remove_task(TASK_HAMMER_RECLAIM_KNIFE + iOwner)
+	hammer_reclaim_knife(iOwner)
+}
+
+hammer_reclaim_knife(iOwner, bool:bWaitedForItem = false)
+{
+	if (Player[iOwner][PlrKnife] != g_iKnifeId)
+		return
+
+	if (Float:get_member(iOwner, m_flNextAttack) > 0.0)
+	{
+		set_task(HAMMER_RECLAIM_KNIFE_POLL, "task_hammer_reclaim_knife", TASK_HAMMER_RECLAIM_KNIFE + iOwner)
+		return
+	}
+
 	set_pev(iOwner, pev_viewmodel, g_pKnifeVStr)
 	set_pev(iOwner, pev_weaponmodel, g_pKnifePStr)
 	set_member(iOwner, m_szAnimExtention, ANIM_EXT_HAMMER_STR)
-	kc_player_sub_glow(iOwner, HAMMER_GLOW_R, HAMMER_GLOW_G, HAMMER_GLOW_B)
 
-	new iItem = get_member(iOwner, m_pActiveItem)
-	if (!is_nullent(iItem))
-		ExecuteHamB(Ham_Item_Deploy, iItem)
+	if (!bWaitedForItem)
+	{
+		// item scripts (HP/regeneration/vampirism/frost-fire-gas) already redeploy
+		// the active weapon themselves the instant their own use-timer (m_flNextAttack) ends
+		new iItem = get_member(iOwner, m_pActiveItem)
+		if (!is_nullent(iItem))
+			ExecuteHamB(Ham_Item_Deploy, iItem)
+	}
+}
 
-	kc_player_set_def_maxspeed(iOwner, SPEED)
+public task_hammer_reclaim_knife(iTaskId)
+{
+	new iOwner = iTaskId - TASK_HAMMER_RECLAIM_KNIFE
 
-	engfunc(EngFunc_EmitSound, iOwner, CHAN_WEAPON, SOUND_KNIFE_DEPLOY, 1.0, ATTN_NORM, 0, PITCH_NORM)
+	if (!is_user_alive(iOwner))
+		return
+
+	hammer_reclaim_knife(iOwner, true)
 }
 
 hammer_cleanup(iPlayer)
@@ -1191,6 +1241,9 @@ hammer_cleanup(iPlayer)
 	}
 
 	kc_player_sub_glow(iPlayer, HAMMER_GLOW_R, HAMMER_GLOW_G, HAMMER_GLOW_B)
+
+	if (!Player[iPlayer][PlrHammerWindup])
+		kc_player_unset_game_flag(iPlayer, PLGF_IS_DISABLED_INVENTORY)
 }
 
 public fw_Hammer_PrimaryAttack_Pre(iWeapon)
@@ -1203,7 +1256,7 @@ public fw_Hammer_PrimaryAttack_Pre(iWeapon)
 	return HAM_IGNORED
 }
 
-public fw_Knife_Deploy_Post(iWeapon)
+public fw_Knife_Deploy_Pre(iWeapon)
 {
 	new iPlayer = get_member(iWeapon, m_pPlayer)
 
@@ -1214,6 +1267,25 @@ public fw_Knife_Deploy_Post(iWeapon)
 	{
 		set_pev(iPlayer, pev_viewmodel, 0)
 		set_pev(iPlayer, pev_weaponmodel, 0)
+
+		SetHamReturnInteger(1)
+		return HAM_SUPERCEDE
+	}
+
+	return HAM_IGNORED
+}
+
+public fw_OtherWeapon_CanDeploy_Pre(iWeapon)
+{
+	new iPlayer = get_member(iWeapon, m_pPlayer)
+
+	if (is_nullent(iPlayer))
+		return HAM_IGNORED
+
+	if (Player[iPlayer][PlrKnife] == g_iKnifeId && (Player[iPlayer][PlrHammerEnt] || Player[iPlayer][PlrHammerWindup]))
+	{
+		SetHamReturnInteger(0)
+		return HAM_SUPERCEDE
 	}
 
 	return HAM_IGNORED
