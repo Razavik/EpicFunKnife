@@ -606,6 +606,8 @@ hammer_throw(iPlayer)
 	set_entvar(iHammerEnt, var_animtime, get_gametime())
 
 	SetTouch(iHammerEnt, "hammer_touch")
+	SetThink(iHammerEnt, "hammer_think")
+	set_entvar(iHammerEnt, var_nextthink, get_gametime())
 
 	set_pev(iPlayer, pev_weaponmodel, 0)
 
@@ -721,13 +723,9 @@ public hammer_touch(iHammerEnt, iOther)
 
 	if (iOther > 0 && iOther <= MaxClients)
 	{
-		if (is_user_alive(iOther))
-		{
-			if (get_user_team(iOther) != get_user_team(iOwner))
-				hammer_damage_player(iHammerEnt, iOwner, iOther)
-			else if (!kc_player_check_game_flag(iOther, PLGF_IN_UNABILITY) && kc_player_in_freeze(iOther))
-				hammer_break_ice(iHammerEnt, iOther)
-		}
+		if (is_user_alive(iOther) && get_user_team(iOther) == get_user_team(iOwner)
+			&& !kc_player_check_game_flag(iOther, PLGF_IN_UNABILITY) && kc_player_in_freeze(iOther))
+			hammer_break_ice(iHammerEnt, iOther)
 
 		return HC_CONTINUE
 	}
@@ -797,6 +795,62 @@ public hammer_touch(iHammerEnt, iOther)
 	return HC_CONTINUE
 }
 
+public hammer_think(iHammerEnt)
+{
+	if (is_nullent(iHammerEnt))
+		return
+
+	new iOwner = get_entvar(iHammerEnt, var_owner)
+	if (!is_entity_player(iOwner) || !Player[iOwner][PlrHammerEnt])
+		return
+
+	if (get_entvar(iHammerEnt, var_movetype) != MOVETYPE_NONE)
+		hammer_check_players_hitbox(iHammerEnt, iOwner)
+
+	set_entvar(iHammerEnt, var_nextthink, get_gametime())
+}
+
+// The physical SetSize box drives world/wall collision (kunai-sized, 8x8x4) and must
+// stay small so the hammer can fit through narrow gaps. Player damage instead uses this
+// separate, larger box (16x16x4, the hammer's original size) checked every frame at its
+// current position, independent of the collision box used against the world.
+hammer_check_players_hitbox(iHammerEnt, iOwner)
+{
+	new Float:vOrigin[3]
+	get_entvar(iHammerEnt, var_origin, vOrigin)
+
+	new Float:vBoxMins[3] = {-8.0, -8.0, -2.0}
+	new Float:vBoxMaxs[3] = {8.0, 8.0, 2.0}
+
+	new iTeam = get_user_team(iOwner)
+
+	new iTarget = -1
+	while ((iTarget = engfunc(EngFunc_FindEntityInSphere, iTarget, vOrigin, 64.0)) > 0)
+	{
+		if (iTarget > MaxClients || iTarget == iOwner || !is_user_alive(iTarget) || get_user_team(iTarget) == iTeam)
+			continue
+
+		new Float:vTargetOrigin[3], Float:vTargetMins[3], Float:vTargetMaxs[3]
+		get_entvar(iTarget, var_origin, vTargetOrigin)
+		get_entvar(iTarget, var_mins, vTargetMins)
+		get_entvar(iTarget, var_maxs, vTargetMaxs)
+
+		new bool:bOverlap = true
+		for (new i; i < 3; i++)
+		{
+			if (vOrigin[i] + vBoxMaxs[i] < vTargetOrigin[i] + vTargetMins[i]
+				|| vOrigin[i] + vBoxMins[i] > vTargetOrigin[i] + vTargetMaxs[i])
+			{
+				bOverlap = false
+				break
+			}
+		}
+
+		if (bOverlap)
+			hammer_damage_player(iHammerEnt, iOwner, iTarget)
+	}
+}
+
 bool:is_hull_vacant(Float:vOrigin[3], iHullType, iEnt)
 {
 	engfunc(EngFunc_TraceHull, vOrigin, vOrigin, DONT_IGNORE_MONSTERS, iHullType, iEnt, 0)
@@ -824,15 +878,34 @@ hammer_damage_player(iHammerEnt, iOwner, iTarget)
 	get_entvar(iHammerEnt, var_origin, vHammerOrigin)
 	draw_lightning_strike(vHammerOrigin)
 
-	new Float:vVelocity[3]
-	get_entvar(iHammerEnt, var_velocity, vVelocity)
-
-	xs_vec_normalize(vVelocity, vVelocity)
-	xs_vec_mul_scalar(vVelocity, HIT_PLAYER_KNOCKBACK, vVelocity)
-	vVelocity[2] = 250.0
+	new Float:vForward[3]
+	get_entvar(iHammerEnt, var_velocity, vForward)
+	xs_vec_normalize(vForward, vForward)
 
 	new Float:vTargetOrigin[3]
 	get_entvar(iTarget, var_origin, vTargetOrigin)
+
+	// hit off-center (left/right edge of the hitbox) knocks sideways away from the
+	// hammer's path instead of always pushing straight along its travel direction
+	new Float:vOffset[3]
+	xs_vec_sub(vTargetOrigin, vHammerOrigin, vOffset)
+	vOffset[2] = 0.0
+
+	new Float:fForwardDist = xs_vec_dot(vOffset, vForward)
+	new Float:vLateral[3]
+	vLateral[0] = vOffset[0] - vForward[0] * fForwardDist
+	vLateral[1] = vOffset[1] - vForward[1] * fForwardDist
+	vLateral[2] = 0.0
+
+	new Float:vVelocity[3]
+	if (xs_vec_len(vLateral) > 4.0)
+		xs_vec_normalize(vLateral, vVelocity)
+	else
+		xs_vec_copy(vForward, vVelocity)
+
+	xs_vec_mul_scalar(vVelocity, HIT_PLAYER_KNOCKBACK, vVelocity)
+	vVelocity[2] = 250.0
+
 	vTargetOrigin[2] += 8.0
 
 	if (is_hull_vacant(vTargetOrigin, get_entvar(iTarget, var_flags) & FL_DUCKING ? HULL_HEAD : HULL_HUMAN, iTarget))
@@ -997,6 +1070,8 @@ hammer_start_return(iOwner, iHammerEnt)
 	hammer_start_loop_sound(iOwner, iHammerEnt)
 
 	SetTouch(iHammerEnt, "hammer_touch")
+	SetThink(iHammerEnt, "hammer_think")
+	set_entvar(iHammerEnt, var_nextthink, get_gametime())
 
 	hammer_update_return_velocity(iOwner, iHammerEnt)
 }
