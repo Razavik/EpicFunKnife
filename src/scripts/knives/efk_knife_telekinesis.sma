@@ -35,11 +35,17 @@ new const CLASS_CLAWS_SWING[]	= "next21_claws_swing"
 
 #define SOUND_TELEKINESIS	"next21_efk/telekinesis.wav"
 
-#define FALLDMGDIVIDER			9.0
-#define DISTANCE_ATTACK_DELAY	1.0
-#define DISTANCE_ATTACK_DAMAGE	15.0
-#define DISTANCE_ATTACK_STEP_LEN		32.0
-#define DISTANCE_ATTACK_STEP_MUL		3.0
+#define FALL_DAMAGE_DIVIDER			9.0
+#define DAMAGE_CHARGE_MUL			0.25
+
+#define DISTANCE_ATTACK_DELAY		1.0
+#define DISTANCE_ATTACK_DAMAGE		15.0
+#define DISTANCE_ATTACK_STEP_LEN	32.0
+#define DISTANCE_ATTACK_STEP_MUL	3.0
+
+#define SPLASH_RADIUS				250.0
+#define SPLASH_DAMAGE_DIVIDER		3.0
+#define SPLASH_DAMAGE_MAX			90.0
 
 enum _:ViewSeq
 {
@@ -226,59 +232,66 @@ public fw_SecondaryAttack(iWeapon)
 	return HAM_IGNORED
 }
 
-public fw_PlayerDamage(iVictim, gun, attacker, Float:damage, bits)
+public fw_PlayerDamage(iVictim, iInflictor, iAttacker, Float:fDamage, iFlags)
 {
 	if (GetHamReturnStatus() == HAM_SUPERCEDE)
 		return HAM_SUPERCEDE
 
 	if (Player[iVictim][PlrKnife] == g_iKnifeId)
 	{
-		if (bits & DMG_FALL)
+		telekinesis_add_charge(iVictim, fDamage)
+
+		if (iFlags & DMG_FALL)
 		{
-			damage /= FALLDMGDIVIDER
-			SetHamParamFloat(4, damage)
+			fDamage /= FALL_DAMAGE_DIVIDER
+			SetHamParamFloat(4, fDamage)
 			return HAM_OVERRIDE
 		}
 	}
 
-	if (!is_entity_player(attacker))
+	if (!is_entity_player(iAttacker))
 		return HAM_IGNORED
 
-	if (Player[attacker][PlrKnife] != g_iKnifeId)
+	if (Player[iAttacker][PlrKnife] != g_iKnifeId)
 		return HAM_IGNORED
 
-	if (!(bits & DMG_BULLET))
+	if (!(iFlags & DMG_BULLET))
 		return HAM_IGNORED
 
-	if (kc_player_in_silence(attacker))
+	if (get_user_team(iAttacker) != get_user_team(iVictim))
+		telekinesis_add_charge(iAttacker, fDamage)
+
+	if (kc_player_in_silence(iAttacker))
 		return HAM_IGNORED
 
-	if (damage < 50.0)
+	if (fDamage < 50.0)
 		return HAM_IGNORED
 
-	new ent = -1, Float:vOrigin[3]
+	new iSplashTarget = NULLENT, Float:vOrigin[3]
 	get_entvar(iVictim, var_origin, vOrigin)
-	new Float:fCurDamage
+	new Float:fSplashDamage
 
-	while ((ent = engfunc(EngFunc_FindEntityInSphere, ent, vOrigin, 250.0)))
+	while ((iSplashTarget = engfunc(EngFunc_FindEntityInSphere, iSplashTarget, vOrigin, SPLASH_RADIUS)))
 	{
-		if (is_entity_player(ent)
-			&& ent != iVictim && Player[ent][PlrIsAlive]
-			&& !kc_player_check_game_flag(ent, PLGF_IN_UNABILITY)
-			&& kc_player_get_visibility(ent) != VIS_INVISION
-			&& get_user_team(attacker) != get_user_team(ent))
+		if (is_entity_player(iSplashTarget)
+			&& iSplashTarget != iVictim && Player[iSplashTarget][PlrIsAlive]
+			&& !kc_player_check_game_flag(iSplashTarget, PLGF_IN_UNABILITY)
+			&& kc_player_get_visibility(iSplashTarget) != VIS_INVISION
+			&& get_user_team(iAttacker) != get_user_team(iSplashTarget))
 		{
-			fCurDamage = damage / 3
+			fSplashDamage = fDamage / SPLASH_DAMAGE_DIVIDER
 
-			if (fCurDamage > 45.0)
-				fCurDamage = 45.0
+			if (fSplashDamage > SPLASH_DAMAGE_MAX)
+				fSplashDamage = SPLASH_DAMAGE_MAX
 
-			kc_player_set_death_reason(ent, "DEATH_REASON_TELEKINESIS")
-			set_member(ent, m_LastHitGroup, HIT_GENERIC)
-			ExecuteHamB(Ham_TakeDamage, ent, attacker, attacker, fCurDamage, DMG_ENERGYBEAM | DMG_ALWAYSGIB)
+			kc_player_set_death_reason(iSplashTarget, "DEATH_REASON_TELEKINESIS")
+			set_member(iSplashTarget, m_LastHitGroup, HIT_GENERIC)
+			ExecuteHamB(Ham_TakeDamage, iSplashTarget, iAttacker, iAttacker,
+				fSplashDamage, DMG_ENERGYBEAM | DMG_ALWAYSGIB)
+			telekinesis_add_charge(iAttacker, fSplashDamage)
 
 			new Float:vClawsOrigin[3]
-			get_entvar(ent, var_origin, vClawsOrigin)
+			get_entvar(iSplashTarget, var_origin, vClawsOrigin)
 			claws_swing_create(vClawsOrigin, vOrigin)
 		}
 	}
@@ -675,6 +688,15 @@ telekinesis_self(iPlayer)
 	kc_player_add_glow(iPlayer, 1.0, 100, 0, 225)
 
 	return PLUGIN_HANDLED
+}
+
+telekinesis_add_charge(iPlayer, Float:fDamage)
+{
+	if (fDamage <= 0.0)
+		return
+
+	new Float:fCharge = kc_player_get_abil1_charge(iPlayer) + fDamage * DAMAGE_CHARGE_MUL
+	kc_player_set_abil1_charge(iPlayer, floatmin(fCharge, 100.0))
 }
 
 distance_attack(iPlayer, bool:bOnlyDistance=true)
