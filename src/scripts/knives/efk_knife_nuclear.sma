@@ -753,6 +753,23 @@ public hammer_touch(iHammerEnt, iOther)
 			engfunc(EngFunc_EmitSound, iHammerEnt, CHAN_STATIC, random(2) ? SOUND_KNIFE_HIT1 : SOUND_KNIFE_HIT2, 1.0, ATTN_NORM, 0, PITCH_NORM)
 			return HC_CONTINUE
 		}
+		case IMPULSE_ZOMBIE:
+		{
+			if (get_entvar(iOther, var_skin) + 1 != get_user_team(iOwner))
+			{
+				new Float:vVelocity[3]
+				get_entvar(iHammerEnt, var_velocity, vVelocity)
+				xs_vec_normalize(vVelocity, vVelocity)
+				xs_vec_mul_scalar(vVelocity, HIT_PLAYER_KNOCKBACK, vVelocity)
+				vVelocity[2] = 250.0
+				set_entvar(iOther, var_velocity, vVelocity)
+
+				ExecuteHamB(Ham_TakeDamage, iOther, iHammerEnt, iOwner, HIT_PLAYER_DAMAGE, DMG_CLUB)
+			}
+
+			engfunc(EngFunc_EmitSound, iHammerEnt, CHAN_STATIC, random(2) ? SOUND_KNIFE_HIT1 : SOUND_KNIFE_HIT2, 1.0, ATTN_NORM, 0, PITCH_NORM)
+			return HC_CONTINUE
+		}
 	}
 
 	if (!Player[iOwner][PlrHammerReturning])
