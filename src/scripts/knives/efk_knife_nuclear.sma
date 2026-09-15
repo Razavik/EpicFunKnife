@@ -120,7 +120,8 @@ enum _:PlayerData
 	bool:PlrHammerReturning,
 	bool:PlrHammerWindup,
 	bool:PlrHammerRecallBoosted,
-	PlrHammerStuckCoffin
+	PlrHammerStuckCoffin,
+	bool:PlrHammerInTornado
 }
 
 #define Player[%1][%2]	g_ePlayerData[%1 - 1][%2]
@@ -613,6 +614,7 @@ hammer_throw(iPlayer)
 	Player[iPlayer][PlrHammerReturning] = false
 	Player[iPlayer][PlrHammerRecallBoosted] = false
 	Player[iPlayer][PlrHammerStuckCoffin] = 0
+	Player[iPlayer][PlrHammerInTornado] = false
 
 	kc_player_set_ability3_name(iPlayer, "Force Recall")
 	kc_player_set_ability2_name(iPlayer, "Recall")
@@ -801,9 +803,61 @@ public hammer_think(iHammerEnt)
 		return
 
 	if (get_entvar(iHammerEnt, var_movetype) != MOVETYPE_NONE)
+	{
 		hammer_check_players_hitbox(iHammerEnt, iOwner)
+		hammer_handle_tornado(iHammerEnt, iOwner)
+	}
 
 	set_entvar(iHammerEnt, var_nextthink, get_gametime())
+}
+
+// Wind's tornado applies its own circular/pull force to anything tagged IMPULSE_KUNAI
+// (which the hammer is), spinning it around and bleeding off its speed. While caught
+// in one, keep the model facing the direction it's actually moving instead of the
+// stale throw angle; once it leaves, relaunch it at full speed along whatever
+// direction the tornado left it travelling in, instead of limping out slowed down.
+hammer_handle_tornado(iHammerEnt, iOwner)
+{
+	static const Float:TORNADO_FIND_RADIUS = 200.0 // mirrors efk_knife_wind.sma's tornado radius+height
+
+	new Float:vOrigin[3]
+	get_entvar(iHammerEnt, var_origin, vOrigin)
+
+	new bool:bInTornado = false
+	new iEnt = -1
+	while ((iEnt = engfunc(EngFunc_FindEntityInSphere, iEnt, vOrigin, TORNADO_FIND_RADIUS)) > 0)
+	{
+		if (get_entvar(iEnt, var_impulse) == IMPULSE_TORNADO)
+		{
+			bInTornado = true
+			break
+		}
+	}
+
+	new Float:vVelocity[3]
+	get_entvar(iHammerEnt, var_velocity, vVelocity)
+
+	if (bInTornado)
+	{
+		if (xs_vec_len(vVelocity) > 0.0)
+		{
+			new Float:vAngles[3]
+			vector_to_angle(vVelocity, vAngles)
+			set_entvar(iHammerEnt, var_angles, vAngles)
+		}
+	}
+	else if (Player[iOwner][PlrHammerInTornado] && xs_vec_len(vVelocity) > 0.0)
+	{
+		xs_vec_normalize(vVelocity, vVelocity)
+		xs_vec_mul_scalar(vVelocity, Player[iOwner][PlrHammerReturning] ? HAMMER_RECALL_SPEED : HAMMER_FLIGHT_SPEED, vVelocity)
+		set_entvar(iHammerEnt, var_velocity, vVelocity)
+
+		new Float:vAngles[3]
+		vector_to_angle(vVelocity, vAngles)
+		set_entvar(iHammerEnt, var_angles, vAngles)
+	}
+
+	Player[iOwner][PlrHammerInTornado] = bInTornado
 }
 
 // The physical SetSize box drives world/wall collision (kunai-sized, 8x8x4) and must
