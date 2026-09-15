@@ -78,9 +78,6 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define TASK_HAMMER_HIDE_VIEWMODEL	32675
 #define TASK_HAMMER_FLIGHT_TIMEOUT	32676
 #define TASK_HAMMER_LOOP_SOUND	32677
-#define TASK_HAMMER_RECLAIM_KNIFE	32678
-
-#define HAMMER_RECLAIM_KNIFE_POLL	0.1
 
 #define HAMMER_FLIGHT_TIMEOUT	12.0
 #define HAMMER_LOOP_SOUND_DURATION	2.3
@@ -437,7 +434,6 @@ public efk_change_knife_core_post(iPlayer, iKnifeId)
 	{
 		hammer_cleanup(iPlayer)
 		hammer_cancel_windup(iPlayer)
-		remove_task(TASK_HAMMER_RECLAIM_KNIFE + iPlayer)
 	}
 
 	Player[iPlayer][PlrKnife] = iKnifeId
@@ -1244,43 +1240,21 @@ hammer_return_complete(iOwner, iHammerEnt)
 	kc_player_set_def_maxspeed(iOwner, SPEED)
 	kc_player_unset_game_flag(iOwner, PLGF_IS_DISABLED_INVENTORY)
 
-	remove_task(TASK_HAMMER_RECLAIM_KNIFE + iOwner)
 	hammer_reclaim_knife(iOwner)
 }
 
-hammer_reclaim_knife(iOwner, bool:bWaitedForItem = false)
+hammer_reclaim_knife(iOwner)
 {
 	if (Player[iOwner][PlrKnife] != g_iKnifeId)
 		return
-
-	if (Float:get_member(iOwner, m_flNextAttack) > 0.0)
-	{
-		set_task(HAMMER_RECLAIM_KNIFE_POLL, "task_hammer_reclaim_knife", TASK_HAMMER_RECLAIM_KNIFE + iOwner)
-		return
-	}
 
 	set_pev(iOwner, pev_viewmodel, g_pKnifeVStr)
 	set_pev(iOwner, pev_weaponmodel, g_pKnifePStr)
 	set_member(iOwner, m_szAnimExtention, ANIM_EXT_HAMMER_STR)
 
-	if (!bWaitedForItem)
-	{
-		// item scripts (HP/regeneration/vampirism/frost-fire-gas) already redeploy
-		// the active weapon themselves the instant their own use-timer (m_flNextAttack) ends
-		new iItem = get_member(iOwner, m_pActiveItem)
-		if (!is_nullent(iItem))
-			ExecuteHamB(Ham_Item_Deploy, iItem)
-	}
-}
-
-public task_hammer_reclaim_knife(iTaskId)
-{
-	new iOwner = iTaskId - TASK_HAMMER_RECLAIM_KNIFE
-
-	if (!is_user_alive(iOwner))
-		return
-
-	hammer_reclaim_knife(iOwner, true)
+	new iItem = get_member(iOwner, m_pActiveItem)
+	if (!is_nullent(iItem))
+		ExecuteHamB(Ham_Item_Deploy, iItem)
 }
 
 hammer_cleanup(iPlayer)
