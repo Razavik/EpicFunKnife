@@ -75,7 +75,6 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define HAMMER_WINDUP_TIME	0.3
 
 #define TASK_HAMMER_THROW	32674
-#define TASK_HAMMER_HIDE_VIEWMODEL	32675
 #define TASK_HAMMER_FLIGHT_TIMEOUT	32676
 #define TASK_HAMMER_LOOP_SOUND	32677
 
@@ -121,7 +120,8 @@ enum _:PlayerData
 	bool:PlrHammerWindup,
 	bool:PlrHammerRecallBoosted,
 	PlrHammerStuckCoffin,
-	bool:PlrHammerInTornado
+	bool:PlrHammerInTornado,
+	Float:PlrHammerViewHideTime
 }
 
 #define Player[%1][%2]	g_ePlayerData[%1 - 1][%2]
@@ -515,8 +515,7 @@ public efk_ability2(iPlayer)
 	remove_task(TASK_HAMMER_THROW + iPlayer)
 	set_task(HAMMER_THROW_DELAY, "task_hammer_throw", TASK_HAMMER_THROW + iPlayer)
 
-	remove_task(TASK_HAMMER_HIDE_VIEWMODEL + iPlayer)
-	set_task(HAMMER_WINDUP_TIME, "task_hide_viewmodel", TASK_HAMMER_HIDE_VIEWMODEL + iPlayer)
+	Player[iPlayer][PlrHammerViewHideTime] = get_gametime() + HAMMER_WINDUP_TIME
 
 	return PLUGIN_HANDLED
 }
@@ -533,24 +532,13 @@ public task_hammer_throw(iTaskId)
 	hammer_throw(iPlayer)
 }
 
-public task_hide_viewmodel(iTaskId)
-{
-	new iPlayer = iTaskId - TASK_HAMMER_HIDE_VIEWMODEL
-
-	if (!is_user_alive(iPlayer) || Player[iPlayer][PlrKnife] != g_iKnifeId || !Player[iPlayer][PlrHammerEnt])
-		return
-
-	set_pev(iPlayer, pev_viewmodel, 0)
-}
-
 hammer_cancel_windup(iPlayer)
 {
-	remove_task(TASK_HAMMER_HIDE_VIEWMODEL + iPlayer)
-
 	if (!Player[iPlayer][PlrHammerWindup])
 		return
 
 	Player[iPlayer][PlrHammerWindup] = false
+	Player[iPlayer][PlrHammerViewHideTime] = 0.0
 	remove_task(TASK_HAMMER_THROW + iPlayer)
 	kc_player_sub_glow(iPlayer, HAMMER_GLOW_R, HAMMER_GLOW_G, HAMMER_GLOW_B)
 
@@ -793,6 +781,14 @@ public hammer_touch(iHammerEnt, iOther)
 	return HC_CONTINUE
 }
 
+hammer_check_view_hide(iOwner)
+{
+	if (Player[iOwner][PlrHammerViewHideTime] <= 0.0 || get_gametime() < Player[iOwner][PlrHammerViewHideTime])
+		return
+
+	set_pev(iOwner, pev_viewmodel, 0)
+}
+
 public hammer_think(iHammerEnt)
 {
 	if (is_nullent(iHammerEnt))
@@ -801,6 +797,8 @@ public hammer_think(iHammerEnt)
 	new iOwner = get_entvar(iHammerEnt, var_owner)
 	if (!is_entity_player(iOwner) || !Player[iOwner][PlrHammerEnt])
 		return
+
+	hammer_check_view_hide(iOwner)
 
 	if (get_entvar(iHammerEnt, var_movetype) != MOVETYPE_NONE)
 	{
@@ -811,14 +809,9 @@ public hammer_think(iHammerEnt)
 	set_entvar(iHammerEnt, var_nextthink, get_gametime())
 }
 
-// Wind's tornado applies its own circular/pull force to anything tagged IMPULSE_KUNAI
-// (which the hammer is), spinning it around and bleeding off its speed. While caught
-// in one, keep the model facing the direction it's actually moving instead of the
-// stale throw angle; once it leaves, relaunch it at full speed along whatever
-// direction the tornado left it travelling in, instead of limping out slowed down.
 hammer_handle_tornado(iHammerEnt, iOwner)
 {
-	static const Float:TORNADO_FIND_RADIUS = 200.0 // mirrors efk_knife_wind.sma's tornado radius+height
+	static const Float:TORNADO_FIND_RADIUS = 200.0
 
 	new Float:vOrigin[3]
 	get_entvar(iHammerEnt, var_origin, vOrigin)
@@ -860,10 +853,6 @@ hammer_handle_tornado(iHammerEnt, iOwner)
 	Player[iOwner][PlrHammerInTornado] = bInTornado
 }
 
-// The physical SetSize box drives world/wall collision (kunai-sized, 8x8x4) and must
-// stay small so the hammer can fit through narrow gaps. Player damage instead uses this
-// separate, larger box (16x16x4, the hammer's original size) checked every frame at its
-// current position, independent of the collision box used against the world.
 hammer_check_players_hitbox(iHammerEnt, iOwner)
 {
 	new Float:vOrigin[3]
@@ -935,8 +924,6 @@ hammer_damage_player(iHammerEnt, iOwner, iTarget)
 	new Float:vTargetOrigin[3]
 	get_entvar(iTarget, var_origin, vTargetOrigin)
 
-	// hit off-center (left/right edge of the hitbox) knocks sideways away from the
-	// hammer's path instead of always pushing straight along its travel direction
 	new Float:vOffset[3]
 	xs_vec_sub(vTargetOrigin, vHammerOrigin, vOffset)
 	vOffset[2] = 0.0
@@ -1091,6 +1078,9 @@ hammer_hit_world(iHammerEnt, iOwner)
 	set_entvar(iHammerEnt, var_solid, SOLID_NOT)
 	SetTouch(iHammerEnt, "")
 
+	Player[iOwner][PlrHammerViewHideTime] = get_gametime()
+	hammer_check_view_hide(iOwner)
+
 	SetThink(iHammerEnt, "hammer_ground_think")
 	set_entvar(iHammerEnt, var_nextthink, get_gametime() + HAMMER_AUTO_RETURN_DELAY)
 }
@@ -1103,6 +1093,8 @@ public hammer_ground_think(iHammerEnt)
 	new iOwner = get_entvar(iHammerEnt, var_owner)
 	if (!is_entity_player(iOwner) || !Player[iOwner][PlrHammerEnt])
 		return
+
+	hammer_check_view_hide(iOwner)
 
 	if (!Player[iOwner][PlrHammerReturning])
 		hammer_start_return(iOwner, iHammerEnt)
@@ -1243,7 +1235,7 @@ hammer_update_return_velocity(iOwner, iHammerEnt)
 	xs_vec_sub(vTargetOrigin, vOrigin, vVelocity)
 	new Float:fDist = xs_vec_len(vVelocity)
 
-	if (fDist < 24.0)
+	if (fDist < 12.0)
 	{
 		hammer_return_complete(iOwner, iHammerEnt)
 		return
