@@ -738,7 +738,7 @@ public hammer_touch(iHammerEnt, iOther)
 		case IMPULSE_ACIDTRAP:
 		{
 			dllfunc(DLLFunc_Use, iOther, iHammerEnt, iHammerEnt, USE_TOGGLE, 0.0)
-			engfunc(EngFunc_EmitSound, iHammerEnt, CHAN_STATIC, random(2) ? SOUND_KNIFE_HIT1 : SOUND_KNIFE_HIT2, 1.0, ATTN_NORM, 0, PITCH_NORM)
+			hammer_emit_hit_sound(iHammerEnt)
 			return HC_CONTINUE
 		}
 		case IMPULSE_ICICLE:
@@ -746,13 +746,13 @@ public hammer_touch(iHammerEnt, iOther)
 			dllfunc(DLLFunc_Touch, iOther, iHammerEnt)
 			if (is_entity(iOther))
 				rg_remove_entity(iOther)
-			engfunc(EngFunc_EmitSound, iHammerEnt, CHAN_STATIC, random(2) ? SOUND_KNIFE_HIT1 : SOUND_KNIFE_HIT2, 1.0, ATTN_NORM, 0, PITCH_NORM)
+			hammer_emit_hit_sound(iHammerEnt)
 			return HC_CONTINUE
 		}
 		case IMPULSE_KUNAI, IMPULSE_RAZOR_SPHERE:
 		{
 			dllfunc(DLLFunc_Think, iOther)
-			engfunc(EngFunc_EmitSound, iHammerEnt, CHAN_STATIC, random(2) ? SOUND_KNIFE_HIT1 : SOUND_KNIFE_HIT2, 1.0, ATTN_NORM, 0, PITCH_NORM)
+			hammer_emit_hit_sound(iHammerEnt)
 			return HC_CONTINUE
 		}
 		case IMPULSE_FIELD_WALL:
@@ -765,7 +765,7 @@ public hammer_touch(iHammerEnt, iOther)
 			if (get_entvar(iOther, var_skin) + 1 != get_user_team(iOwner))
 				ExecuteHamB(Ham_TakeDamage, iOther, iHammerEnt, iOwner, 10.0, DMG_CLUB)
 
-			engfunc(EngFunc_EmitSound, iHammerEnt, CHAN_STATIC, random(2) ? SOUND_KNIFE_HIT1 : SOUND_KNIFE_HIT2, 1.0, ATTN_NORM, 0, PITCH_NORM)
+			hammer_emit_hit_sound(iHammerEnt)
 			return HC_CONTINUE
 		}
 		case IMPULSE_ZOMBIE:
@@ -782,7 +782,7 @@ public hammer_touch(iHammerEnt, iOther)
 				ExecuteHamB(Ham_TakeDamage, iOther, iHammerEnt, iOwner, HIT_PLAYER_DAMAGE, DMG_CLUB)
 			}
 
-			engfunc(EngFunc_EmitSound, iHammerEnt, CHAN_STATIC, random(2) ? SOUND_KNIFE_HIT1 : SOUND_KNIFE_HIT2, 1.0, ATTN_NORM, 0, PITCH_NORM)
+			hammer_emit_hit_sound(iHammerEnt)
 			return HC_CONTINUE
 		}
 	}
@@ -973,12 +973,17 @@ hammer_damage_player(iHammerEnt, iOwner, iTarget)
 	set_member(iTarget, m_LastHitGroup, HIT_GENERIC)
 	ExecuteHamB(Ham_TakeDamage, iTarget, iOwner, iOwner, HIT_PLAYER_DAMAGE, DMG_CLUB)
 
-	engfunc(EngFunc_EmitSound, iHammerEnt, CHAN_STATIC, random(2) ? SOUND_KNIFE_HIT1 : SOUND_KNIFE_HIT2, 1.0, ATTN_NORM, 0, PITCH_NORM)
+	hammer_emit_hit_sound(iHammerEnt)
 }
 
 hammer_break_ice(iHammerEnt, iTarget)
 {
 	kc_player_unfreeze(iTarget)
+	hammer_emit_hit_sound(iHammerEnt)
+}
+
+hammer_emit_hit_sound(iHammerEnt)
+{
 	engfunc(EngFunc_EmitSound, iHammerEnt, CHAN_STATIC, random(2) ? SOUND_KNIFE_HIT1 : SOUND_KNIFE_HIT2, 1.0, ATTN_NORM, 0, PITCH_NORM)
 }
 
