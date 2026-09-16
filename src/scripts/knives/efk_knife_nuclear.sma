@@ -85,8 +85,8 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 
 #define HAMMER_THROW_DELAY	0.1
 
-new const MODEL_V_KNIFE[]		= "models/next21_efk/v_nuclear_knife_b02.mdl"
-new const MODEL_P_KNIFE[]		= "models/next21_efk/p_nuclear_knife_a.mdl"
+new const MODEL_V_KNIFE[]		= "models/next21_efk/v_nuclear_knife_b03.mdl"
+new const MODEL_P_KNIFE[]		= "models/next21_efk/p_nuclear_knife_a02.mdl"
 
 new const ANIM_EXT_HAMMER_STR[]	= "hammer"
 new const ANIM_EXT_NO_HAMMER[]	= "claws"
