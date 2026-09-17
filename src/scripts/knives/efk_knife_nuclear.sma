@@ -106,7 +106,7 @@ new const SOUND_ABILITY[]		= "next21_efk/nuclear_ability.wav"
 new const SOUND_EXPLOSION[]		= "next21_efk/nuclear_explosion.wav"
 new const SOUND_HOTSPEED[]		= "next21_efk/hot_speed.wav"
 new const SOUND_HEAVYFALL[]		= "next21_efk/heavy_fall.wav"
-new const SOUND_HAMMER_LOOP[]	= "next21_efk/nuclear_hammer_loop.wav"
+new const SOUND_HAMMER_LOOP[]	= "next21_efk/nuclear_hammer_loop_b02.wav"
 new const SOUND_HAMMER_HITWALL[]	= "next21_efk/nuclear_hammer_hitwall.wav"
 
 #define TASK_UNABILITY		32673
