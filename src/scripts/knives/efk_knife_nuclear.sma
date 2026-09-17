@@ -47,6 +47,7 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define HAMMER_FLIGHT_SPEED		900.0
 #define HAMMER_RECALL_SPEED		1200.0
 #define HAMMER_AUTO_RETURN_DELAY	6.0
+#define HAMMER_RETURN_COOLDOWN		0.3
 
 #define HAMMER_SEQ_IDLE			0
 #define HAMMER_SEQ_ROTATE_RIGHT	1
@@ -59,7 +60,9 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define HAMMER_GLOW_R	255
 #define HAMMER_GLOW_G	255
 #define HAMMER_GLOW_B	180
-#define HAMMER_GLOW_TIME	30.0
+#define HAMMER_GLOW_TIME	9999.0
+
+#define HAMMER_CATCH_RADIUS	24.0
 
 #define IMPACT_RADIUS		150.0
 #define IMPACT_KNOCKBACK	1600.0
@@ -121,7 +124,9 @@ enum _:PlayerData
 	bool:PlrHammerRecallBoosted,
 	PlrHammerStuckCoffin,
 	bool:PlrHammerInTornado,
-	Float:PlrHammerViewHideTime
+	Float:PlrHammerViewHideTime,
+	Float:PlrHammerCoffinStickTime,
+	Float:PlrHammerThrowTime
 }
 
 #define Player[%1][%2]	g_ePlayerData[%1 - 1][%2]
@@ -187,6 +192,7 @@ public plugin_init()
 	RegisterHookChain(RG_CBasePlayer_Killed, "RG_CBasePlayer_Killed_Pre")
 	RegisterHookChain(RG_CBasePlayer_TraceAttack, "RG_CBasePlayer_TraceAttack_Pre")
 	RegisterHookChain(RG_CBasePlayer_PreThink, "RG_CBasePlayer_PreThink_Post", true)
+	RegisterHookChain(RG_CBasePlayer_PostThink, "RG_CBasePlayer_PostThink_Post", true)
 	RegisterHam(Ham_TakeDamage, "player", "fw_Player_Damage")
 	RegisterHam(Ham_TakeDamage, "player", "fw_Player_PostDamage", true)
 	RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_knife", "fw_Hammer_PrimaryAttack_Pre")
@@ -440,6 +446,21 @@ public efk_change_knife_core_post(iPlayer, iKnifeId)
 	Player[iPlayer][PlrKnife] = iKnifeId
 }
 
+public efk_uncapture(iPlayer)
+{
+	if (Player[iPlayer][PlrKnife] != g_iKnifeId)
+		return
+
+	if (Player[iPlayer][PlrHammerEnt] || Player[iPlayer][PlrHammerWindup])
+	{
+		kc_player_add_glow(iPlayer, HAMMER_GLOW_TIME, HAMMER_GLOW_R, HAMMER_GLOW_G, HAMMER_GLOW_B)
+		return
+	}
+
+	set_pev(iPlayer, pev_viewmodel, g_pKnifeVStr)
+	set_pev(iPlayer, pev_weaponmodel, g_pKnifePStr)
+}
+
 public efk_ability_pre(iPlayer, iTarget)
 {
 	if (Player[iPlayer][PlrKnife] == g_iKnifeId && (Player[iPlayer][PlrHammerEnt] || Player[iPlayer][PlrHammerWindup]))
@@ -572,7 +593,7 @@ hammer_throw(iPlayer)
 	set_entvar(iHammerEnt, var_movetype, MOVETYPE_BOUNCEMISSILE)
 	set_entvar(iHammerEnt, var_takedamage, DAMAGE_NO)
 	set_entvar(iHammerEnt, var_owner, iPlayer)
-	set_entvar(iHammerEnt, var_impulse, IMPULSE_KUNAI)
+	set_entvar(iHammerEnt, var_impulse, IMPULSE_HAMMER)
 
 	new Float:vVelocity[3]
 	velocity_by_aim(iPlayer, floatround(HAMMER_FLIGHT_SPEED), vVelocity)
@@ -603,6 +624,7 @@ hammer_throw(iPlayer)
 	Player[iPlayer][PlrHammerRecallBoosted] = false
 	Player[iPlayer][PlrHammerStuckCoffin] = 0
 	Player[iPlayer][PlrHammerInTornado] = false
+	Player[iPlayer][PlrHammerThrowTime] = get_gametime()
 
 	kc_player_set_ability3_name(iPlayer, "Force Recall")
 	kc_player_set_ability2_name(iPlayer, "Recall")
@@ -721,6 +743,26 @@ public hammer_touch(iHammerEnt, iOther)
 	if (equal(szClassname, COFFIN_CLASSNAME))
 		Player[iOwner][PlrHammerStuckCoffin] = iOther
 
+	if (FClassnameIs(iOther, "grenade"))
+	{
+		new Float:vVelocity[3]
+		get_entvar(iOther, var_velocity, vVelocity)
+		vVelocity[0] = -vVelocity[0]
+		vVelocity[1] = -vVelocity[1]
+		vVelocity[2] = floatabs(vVelocity[2])
+		set_entvar(iOther, var_velocity, vVelocity)
+
+		hammer_emit_hit_sound(iHammerEnt)
+		return HC_CONTINUE
+	}
+
+	if (equal(szClassname, "func_breakable") && get_entvar(iOther, var_rendermode) != kRenderNormal)
+	{
+		ExecuteHamB(Ham_TakeDamage, iOther, iHammerEnt, iOwner, 8000.0, DMG_GENERIC)
+		hammer_emit_hit_sound(iHammerEnt)
+		return HC_CONTINUE
+	}
+
 	switch (get_entvar(iOther, var_impulse))
 	{
 		case IMPULSE_ACIDTRAP:
@@ -731,14 +773,74 @@ public hammer_touch(iHammerEnt, iOther)
 		}
 		case IMPULSE_ICICLE:
 		{
+			new iIcicleOwner = get_entvar(iOther, var_owner)
+			if (is_entity_player(iIcicleOwner) && get_user_team(iIcicleOwner) == get_user_team(iOwner))
+				return HC_CONTINUE
+
 			dllfunc(DLLFunc_Touch, iOther, iHammerEnt)
 			if (is_entity(iOther))
 				rg_remove_entity(iOther)
 			hammer_emit_hit_sound(iHammerEnt)
 			return HC_CONTINUE
 		}
+		case IMPULSE_ICE_CLONE:
+		{
+			return HC_CONTINUE
+		}
+		case IMPULSE_FOLLOWENT:
+		{
+			if (equal(szClassname, COFFIN_CLASSNAME) && !Player[iOwner][PlrHammerReturning])
+				hammer_stick_coffin(iHammerEnt, iOwner, iOther)
+
+			return HC_CONTINUE
+		}
+		case IMPULSE_EMBODIMENT:
+		{
+			return HC_CONTINUE
+		}
+		case IMPULSE_HAMMER:
+		{
+			return HC_CONTINUE
+		}
+		case IMPULSE_ACIDB:
+		{
+			new iAcidOwner = get_entvar(iOther, var_owner)
+			if (is_entity_player(iAcidOwner) && get_user_team(iAcidOwner) == get_user_team(iOwner))
+				return HC_CONTINUE
+
+			engfunc(EngFunc_SetModel, iOther, "")
+			engfunc(EngFunc_SetSize, iOther, Float:{-32.0, -32.0, -32.0}, Float:{32.0, 32.0, 32.0})
+
+			set_entvar(iOther, var_classname, CLASSNAME_ACIDG)
+			set_entvar(iOther, var_impulse, IMPULSE_ACIDG)
+			set_entvar(iOther, var_solid, SOLID_TRIGGER)
+			set_entvar(iOther, var_movetype, MOVETYPE_NONE)
+			set_entvar(iOther, var_iuser1, 0)
+			set_entvar(iOther, var_nextthink, get_gametime())
+
+			SetThink(iOther, "acidcloud_think")
+			SetTouch(iOther, "acidcloud_touch")
+
+			dllfunc(DLLFunc_Think, iOther)
+
+			hammer_emit_hit_sound(iHammerEnt)
+			return HC_CONTINUE
+		}
+		case IMPULSE_FAKEPLAYER:
+		{
+			if (get_entvar(iOther, var_team) != get_user_team(iOwner))
+			{
+				ExecuteHamB(Ham_TakeDamage, iOther, iHammerEnt, iOwner, 50.0, DMG_CLUB)
+				hammer_emit_hit_sound(iHammerEnt)
+			}
+			return HC_CONTINUE
+		}
 		case IMPULSE_KUNAI, IMPULSE_RAZOR_SPHERE:
 		{
+			new iOtherOwner = get_entvar(iOther, var_owner)
+			if (is_entity_player(iOtherOwner) && get_user_team(iOtherOwner) == get_user_team(iOwner))
+				return HC_CONTINUE
+
 			dllfunc(DLLFunc_Think, iOther)
 			hammer_emit_hit_sound(iHammerEnt)
 			return HC_CONTINUE
@@ -751,9 +853,11 @@ public hammer_touch(iHammerEnt, iOther)
 		case IMPULSE_BUG:
 		{
 			if (get_entvar(iOther, var_skin) + 1 != get_user_team(iOwner))
+			{
 				ExecuteHamB(Ham_TakeDamage, iOther, iHammerEnt, iOwner, 10.0, DMG_CLUB)
+				hammer_emit_hit_sound(iHammerEnt)
+			}
 
-			hammer_emit_hit_sound(iHammerEnt)
 			return HC_CONTINUE
 		}
 		case IMPULSE_ZOMBIE:
@@ -768,9 +872,9 @@ public hammer_touch(iHammerEnt, iOther)
 				set_entvar(iOther, var_velocity, vVelocity)
 
 				ExecuteHamB(Ham_TakeDamage, iOther, iHammerEnt, iOwner, HIT_PLAYER_DAMAGE, DMG_CLUB)
+				hammer_emit_hit_sound(iHammerEnt)
 			}
 
-			hammer_emit_hit_sound(iHammerEnt)
 			return HC_CONTINUE
 		}
 	}
@@ -787,6 +891,7 @@ hammer_check_view_hide(iOwner)
 		return
 
 	set_pev(iOwner, pev_viewmodel, 0)
+	set_pev(iOwner, pev_weaponmodel, 0)
 }
 
 public hammer_think(iHammerEnt)
@@ -799,6 +904,12 @@ public hammer_think(iHammerEnt)
 		return
 
 	hammer_check_view_hide(iOwner)
+
+	if (get_entvar(iHammerEnt, var_hammer_recall) && !Player[iOwner][PlrHammerReturning])
+	{
+		set_entvar(iHammerEnt, var_hammer_recall, 0)
+		hammer_start_return(iOwner, iHammerEnt)
+	}
 
 	if (get_entvar(iHammerEnt, var_movetype) != MOVETYPE_NONE)
 	{
@@ -866,7 +977,8 @@ hammer_check_players_hitbox(iHammerEnt, iOwner)
 	new iTarget = -1
 	while ((iTarget = engfunc(EngFunc_FindEntityInSphere, iTarget, vOrigin, 64.0)) > 0)
 	{
-		if (iTarget > MaxClients || iTarget == iOwner || !is_user_alive(iTarget) || get_user_team(iTarget) == iTeam)
+		if (iTarget > MaxClients || iTarget == iOwner || !is_user_alive(iTarget) || get_user_team(iTarget) == iTeam
+			|| get_entvar(iTarget, var_solid) == SOLID_NOT)
 			continue
 
 		new Float:vTargetOrigin[3], Float:vTargetMins[3], Float:vTargetMaxs[3]
@@ -885,7 +997,15 @@ hammer_check_players_hitbox(iHammerEnt, iOwner)
 			}
 		}
 
-		if (bOverlap)
+		if (!bOverlap)
+			continue
+
+		if (kc_player_apply_concentblock(iTarget, iHammerEnt, ATTACK_HEAVINESS_LOW, 150.0, true))
+		{
+			if (!Player[iOwner][PlrHammerReturning])
+				hammer_start_return(iOwner, iHammerEnt)
+		}
+		else
 			hammer_damage_player(iHammerEnt, iOwner, iTarget)
 	}
 }
@@ -1085,6 +1205,101 @@ hammer_hit_world(iHammerEnt, iOwner)
 	set_entvar(iHammerEnt, var_nextthink, get_gametime() + HAMMER_AUTO_RETURN_DELAY)
 }
 
+hammer_stick_coffin(iHammerEnt, iOwner, iCoffin)
+{
+	remove_task(TASK_HAMMER_FLIGHT_TIMEOUT + iOwner)
+
+	hammer_stop_loop_sound(iOwner, iHammerEnt)
+
+	new Float:vOrigin[3]
+	get_entvar(iHammerEnt, var_origin, vOrigin)
+
+	new Float:vVelocity[3]
+	get_entvar(iHammerEnt, var_velocity, vVelocity)
+	xs_vec_normalize(vVelocity, vVelocity)
+
+	new Float:vTraceEnd[3]
+	vTraceEnd[0] = vOrigin[0] + vVelocity[0] * 32.0
+	vTraceEnd[1] = vOrigin[1] + vVelocity[1] * 32.0
+	vTraceEnd[2] = vOrigin[2] + vVelocity[2] * 32.0
+
+	new pTrace = create_tr2()
+	engfunc(EngFunc_TraceLine, vOrigin, vTraceEnd, IGNORE_MONSTERS, iHammerEnt, pTrace)
+
+	new Float:fFraction
+	get_tr2(pTrace, TR_flFraction, fFraction)
+
+	if (fFraction < 1.0)
+	{
+		new Float:vNormal[3], Float:vAngles[3], Float:vStickOrigin[3]
+		get_tr2(pTrace, TR_vecEndPos, vStickOrigin)
+		get_tr2(pTrace, TR_vecPlaneNormal, vNormal)
+
+		xs_vec_neg(vNormal, vNormal)
+		vector_to_angle(vNormal, vAngles)
+		xs_vec_neg(vNormal, vNormal)
+
+		vAngles[0] += 15.0
+		vAngles[2] += 15.0
+
+		engfunc(EngFunc_SetOrigin, iHammerEnt, vStickOrigin)
+		set_entvar(iHammerEnt, var_origin, vStickOrigin)
+		set_entvar(iHammerEnt, var_angles, vAngles)
+
+		xs_vec_copy(vStickOrigin, vOrigin)
+	}
+
+	free_tr2(pTrace)
+
+	set_entvar(iHammerEnt, var_body, HAMMER_BODY_EFFECT_OFF)
+	set_entvar(iHammerEnt, var_sequence, HAMMER_SEQ_IDLE)
+	set_entvar(iHammerEnt, var_framerate, 1.0)
+	set_entvar(iHammerEnt, var_animtime, get_gametime())
+
+	draw_landing_effect(iHammerEnt)
+	draw_rocks(vOrigin)
+	draw_lightning_strike(vOrigin)
+	engfunc(EngFunc_EmitSound, iHammerEnt, CHAN_STATIC, SOUND_HAMMER_HITWALL, 1.0, ATTN_NORM, 0, PITCH_NORM)
+
+	set_entvar(iHammerEnt, var_velocity, NULL_VECTOR)
+	set_entvar(iHammerEnt, var_avelocity, NULL_VECTOR)
+	set_entvar(iHammerEnt, var_movetype, MOVETYPE_NONE)
+	set_entvar(iHammerEnt, var_solid, SOLID_NOT)
+	SetTouch(iHammerEnt, "")
+
+	Player[iOwner][PlrHammerViewHideTime] = get_gametime()
+	hammer_check_view_hide(iOwner)
+
+	Player[iOwner][PlrHammerStuckCoffin] = iCoffin
+	Player[iOwner][PlrHammerCoffinStickTime] = get_gametime()
+
+	SetThink(iHammerEnt, "hammer_coffin_ground_think")
+	set_entvar(iHammerEnt, var_nextthink, get_gametime())
+}
+
+public hammer_coffin_ground_think(iHammerEnt)
+{
+	if (is_nullent(iHammerEnt))
+		return
+
+	new iOwner = get_entvar(iHammerEnt, var_owner)
+	if (!is_entity_player(iOwner) || !Player[iOwner][PlrHammerEnt])
+		return
+
+	hammer_check_view_hide(iOwner)
+
+	if (!Player[iOwner][PlrHammerReturning])
+	{
+		new iCoffin = Player[iOwner][PlrHammerStuckCoffin]
+		new bool:bCoffinGone = iCoffin && (!is_entity(iCoffin) || (get_entvar(iCoffin, var_flags) & FL_KILLME))
+
+		if (bCoffinGone || get_gametime() >= Player[iOwner][PlrHammerCoffinStickTime] + HAMMER_AUTO_RETURN_DELAY)
+			hammer_start_return(iOwner, iHammerEnt)
+	}
+
+	set_entvar(iHammerEnt, var_nextthink, get_gametime() + 0.1)
+}
+
 public hammer_ground_think(iHammerEnt)
 {
 	if (is_nullent(iHammerEnt))
@@ -1123,8 +1338,28 @@ hammer_start_return(iOwner, iHammerEnt)
 	hammer_update_return_velocity(iOwner, iHammerEnt)
 }
 
+hammer_enforce_hidden_hands(iPlayer)
+{
+	if (Player[iPlayer][PlrKnife] != g_iKnifeId)
+		return
+
+	if (Player[iPlayer][PlrHammerEnt] || Player[iPlayer][PlrHammerWindup])
+	{
+		set_pev(iPlayer, pev_viewmodel, 0)
+		set_pev(iPlayer, pev_weaponmodel, 0)
+		set_member(iPlayer, m_szAnimExtention, ANIM_EXT_NO_HAMMER)
+	}
+}
+
+public RG_CBasePlayer_PostThink_Post(iPlayer)
+{
+	hammer_enforce_hidden_hands(iPlayer)
+}
+
 public RG_CBasePlayer_PreThink_Post(iPlayer)
 {
+	hammer_enforce_hidden_hands(iPlayer)
+
 	if (Player[iPlayer][PlrKnife] != g_iKnifeId)
 		return
 
@@ -1151,12 +1386,12 @@ public RG_CBasePlayer_PreThink_Post(iPlayer)
 		}
 		else
 		{
-			if ((iButton & IN_USE) && !(iOldButtons & IN_USE))
+			if ((iButton & IN_USE) && !(iOldButtons & IN_USE) && hammer_return_ready(iPlayer))
 				hammer_start_return(iPlayer, iHammerEnt)
 			else if (get_entvar(iHammerEnt, var_movetype) != MOVETYPE_NONE
 				&& hammer_touching_coffin(iHammerEnt))
 				hammer_touch(iHammerEnt, Player[iPlayer][PlrHammerStuckCoffin])
-			else if (hammer_touching_field_wall(iHammerEnt))
+			else if (hammer_touching_field_wall(iHammerEnt, iPlayer))
 				hammer_start_return(iPlayer, iHammerEnt)
 			else if (Player[iPlayer][PlrHammerStuckCoffin]
 				&& (!is_entity(Player[iPlayer][PlrHammerStuckCoffin])
@@ -1172,6 +1407,9 @@ public RG_CBasePlayer_PreThink_Post(iPlayer)
 hammer_pull_activate(iPlayer, iHammerEnt)
 {
 	if (Player[iPlayer][PlrHammerWindup])
+		return
+
+	if (!hammer_return_ready(iPlayer))
 		return
 
 	if (Float:get_entvar(iPlayer, var_health) < RUSH_MIN_HEALTH)
@@ -1209,15 +1447,23 @@ bool:hammer_touching_coffin(iHammerEnt)
 	return false
 }
 
-bool:hammer_touching_field_wall(iHammerEnt)
+bool:hammer_return_ready(iPlayer)
+{
+	return get_gametime() - Player[iPlayer][PlrHammerThrowTime] >= HAMMER_RETURN_COOLDOWN
+}
+
+bool:hammer_touching_field_wall(iHammerEnt, iOwner)
 {
 	new Float:vOrigin[3]
 	get_entvar(iHammerEnt, var_origin, vOrigin)
 
+	new iTeam = get_user_team(iOwner)
+
 	new iEnt = 0
 	while ((iEnt = engfunc(EngFunc_FindEntityInSphere, iEnt, vOrigin, 24.0)))
 	{
-		if (iEnt != iHammerEnt && get_entvar(iEnt, var_impulse) == IMPULSE_FIELD_WALL)
+		if (iEnt != iHammerEnt && get_entvar(iEnt, var_impulse) == IMPULSE_FIELD_WALL
+			&& get_entvar(iEnt, var_skin) + 1 != iTeam)
 			return true
 	}
 
@@ -1235,7 +1481,7 @@ hammer_update_return_velocity(iOwner, iHammerEnt)
 	xs_vec_sub(vTargetOrigin, vOrigin, vVelocity)
 	new Float:fDist = xs_vec_len(vVelocity)
 
-	if (fDist < 12.0)
+	if (fDist < HAMMER_CATCH_RADIUS)
 	{
 		hammer_return_complete(iOwner, iHammerEnt)
 		return
@@ -1253,6 +1499,9 @@ hammer_update_return_velocity(iOwner, iHammerEnt)
 hammer_return_complete(iOwner, iHammerEnt)
 {
 	hammer_stop_loop_sound(iOwner, iHammerEnt)
+
+	if (kc_player_get_capture(iOwner) != CAPTURE_NONE)
+		kc_player_set_capture(iOwner, CAPTURE_NONE)
 
 	if (Player[iOwner][PlrHammerRecallBoosted])
 	{
