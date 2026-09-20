@@ -138,6 +138,7 @@ enum _:PlayerData
 	bool:PlrInPush,
 	bool:PlrPunchHitEnemy,
 	bool:PlrPunchHitWall,
+	bool:PlrTrailActive,
 	Float:PlrStealDelay,
 	Float:PlrCorrectionDelay,
 	Float:PlrPushSpeed,
@@ -386,6 +387,27 @@ public RG_CBasePlayer_PreThink_Post(iPlayer)
 			razor_punch_explosion(iPlayer)
 
 		xs_vec_copy(vVelocity, Player[iPlayer][PlrLastVelocity])
+	}
+
+	if (Player[iPlayer][PlrKnife] == g_iKnifeId)
+	{
+		new Float:vRunSpeed[3]
+		get_entvar(iPlayer, var_velocity, vRunSpeed)
+		vRunSpeed[2] = 0.0
+
+		if (Player[iPlayer][PlrInPush]
+			|| (kc_player_get_powerspeed(iPlayer) >= RAGE_MIN_POWER_SPEED && xs_vec_len(vRunSpeed) > 10.0))
+		{
+			razor_trail_start(iPlayer)
+		}
+		else
+		{
+			razor_trail_stop(iPlayer)
+		}
+	}
+	else if (Player[iPlayer][PlrTrailActive])
+	{
+		razor_trail_stop(iPlayer)
 	}
 
 	if (Player[iPlayer][PlrFallDamageRestore]
@@ -1067,8 +1089,7 @@ public efk_ability3(iPlayer)
 	xs_vec_copy(vVelocity, Player[iPlayer][PlrLastVelocity])
 
 	emit_sound(iPlayer, CHAN_BODY, SOUND_JUMP, VOL_NORM, ATTN_NORM, 0, 90)
-	send_msg_TE_BEAMFOLLOW(iPlayer | 0x1000, g_pBeamSpr, 5, 2, ABIL3_GREEN_COLOR, 150)
-	send_msg_TE_BEAMFOLLOW(iPlayer | 0x2000, g_pBeamSpr, 5, 2, ABIL3_RED_COLOR, 150)
+	razor_trail_start(iPlayer)
 
 	return PLUGIN_CONTINUE
 }
@@ -1331,9 +1352,28 @@ razor_punch_end(iPlayer)
 		Player[iPlayer][PlrPunchHitEnemy] = false
 		Player[iPlayer][PlrPunchHitWall] = false
 
-		send_msg_TE_KILLBEAM(iPlayer | 0x1000, MSG_ALL)
-		send_msg_TE_KILLBEAM(iPlayer | 0x2000, MSG_ALL)
+		razor_trail_stop(iPlayer)
 	}
+}
+
+razor_trail_start(iPlayer)
+{
+	if (Player[iPlayer][PlrTrailActive])
+		return
+
+	Player[iPlayer][PlrTrailActive] = true
+	send_msg_TE_BEAMFOLLOW(iPlayer | 0x1000, g_pBeamSpr, 5, 2, ABIL3_GREEN_COLOR, 150)
+	send_msg_TE_BEAMFOLLOW(iPlayer | 0x2000, g_pBeamSpr, 5, 2, ABIL3_RED_COLOR, 150)
+}
+
+razor_trail_stop(iPlayer)
+{
+	if (!Player[iPlayer][PlrTrailActive])
+		return
+
+	Player[iPlayer][PlrTrailActive] = false
+	send_msg_TE_KILLBEAM(iPlayer | 0x1000, MSG_ALL)
+	send_msg_TE_KILLBEAM(iPlayer | 0x2000, MSG_ALL)
 }
 
 set_stealing_icon(const iPlayer)
