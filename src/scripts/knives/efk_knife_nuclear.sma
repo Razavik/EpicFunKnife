@@ -25,7 +25,7 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define ABIL1_CHARGE	5.2632
 
 #define ABIL2_NAME		"Hammer Toss"
-#define ABIL2_CHARGE	8.3333
+#define ABIL2_CHARGE	50.0
 
 #define ABIL3_NAME		"Hot Speed"
 #define ABIL3_CHARGE	10.0
@@ -102,6 +102,8 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define TASK_HAMMER_THROW	32674
 #define TASK_HAMMER_FLIGHT_TIMEOUT	32676
 #define TASK_HAMMER_LOOP_SOUND	32677
+#define TASK_HAMMER_RETURN_RETRY	32700
+#define HAMMER_RETURN_RETRY_DELAY	0.2
 
 #define HAMMER_FLIGHT_TIMEOUT	12.0
 #define HAMMER_LOOP_SOUND_DURATION	2.3
@@ -643,7 +645,6 @@ public efk_ability2(iPlayer)
 	kc_player_set_def_maxspeed(iPlayer, THROW_SPEED)
 
 	Player[iPlayer][PlrHammerWindup] = true
-	kc_player_set_game_flag(iPlayer, PLGF_IS_DISABLED_INVENTORY)
 	kc_player_set_view_anim(iPlayer, VIEW_SEQ_THROW)
 	engfunc(EngFunc_EmitSound, iPlayer, CHAN_WEAPON, SOUND_KNIFE_SLASH, 1.0, ATTN_NORM, 0, PITCH_NORM)
 	rg_set_animation(iPlayer, PLAYER_ATTACK1)
@@ -701,9 +702,6 @@ hammer_cancel_windup(iPlayer)
 	remove_task(TASK_HAMMER_THROW + iPlayer)
 
 	kc_player_sub_glow(iPlayer, HAMMER_GLOW_R, HAMMER_GLOW_G, HAMMER_GLOW_B)
-
-	if (!Player[iPlayer][PlrHammerEnt])
-		kc_player_unset_game_flag(iPlayer, PLGF_IS_DISABLED_INVENTORY)
 }
 
 hammer_throw(iPlayer)
@@ -757,6 +755,8 @@ hammer_throw(iPlayer)
 	set_pev(iPlayer, pev_weaponmodel, 0)
 
 	kc_player_set_def_maxspeed(iPlayer, THROW_SPEED)
+
+	kc_player_set_game_flag(iPlayer, PLGF_IN_HAMMER_THROWN)
 
 	Player[iPlayer][PlrHammerEnt] = iHammerEnt
 	Player[iPlayer][PlrHammerReturning] = false
@@ -866,6 +866,20 @@ public task_hammer_flight_timeout(iTaskId)
 		return
 
 	hammer_start_return(iPlayer, iHammerEnt)
+}
+
+public task_hammer_return_retry(iTaskId)
+{
+	new iOwner = iTaskId - TASK_HAMMER_RETURN_RETRY
+
+	new iHammerEnt = Player[iOwner][PlrHammerEnt]
+	if (!iHammerEnt || is_nullent(iHammerEnt))
+		return
+
+	if (Player[iOwner][PlrHammerReturning])
+		hammer_return_complete(iOwner, iHammerEnt)
+	else
+		hammer_start_return(iOwner, iHammerEnt)
 }
 
 public hammer_touch(iHammerEnt, iOther)
@@ -1567,8 +1581,16 @@ public hammer_ground_think(iHammerEnt)
 
 hammer_start_return(iOwner, iHammerEnt)
 {
+	if (kc_player_check_game_flag(iOwner, PLGF_IN_ITEM_ANIMATION))
+	{
+		remove_task(TASK_HAMMER_RETURN_RETRY + iOwner)
+		set_task(HAMMER_RETURN_RETRY_DELAY, "task_hammer_return_retry", TASK_HAMMER_RETURN_RETRY + iOwner)
+		return
+	}
+
 	Player[iOwner][PlrHammerReturning] = true
 	Player[iOwner][PlrHammerLastThinkTime] = 0.0
+	kc_player_set_game_flag(iOwner, PLGF_IN_HAMMER_RETURNING)
 
 	remove_task(TASK_HAMMER_FLIGHT_TIMEOUT + iOwner)
 
@@ -1596,7 +1618,8 @@ hammer_enforce_hidden_hands(iPlayer)
 
 	if (Player[iPlayer][PlrHammerEnt])
 	{
-		set_pev(iPlayer, pev_viewmodel, 0)
+		if (!kc_player_check_game_flag(iPlayer, PLGF_IN_ITEM_ANIMATION))
+			set_pev(iPlayer, pev_viewmodel, 0)
 		set_pev(iPlayer, pev_weaponmodel, 0)
 		set_member(iPlayer, m_szAnimExtention, ANIM_EXT_NO_HAMMER)
 		return
@@ -1821,6 +1844,16 @@ hammer_update_return_velocity(iOwner, iHammerEnt)
 
 hammer_return_complete(iOwner, iHammerEnt)
 {
+	if (kc_player_check_game_flag(iOwner, PLGF_IN_ITEM_ANIMATION))
+	{
+		set_entvar(iHammerEnt, var_velocity, Float:{0.0, 0.0, 0.0})
+		remove_task(TASK_HAMMER_RETURN_RETRY + iOwner)
+		set_task(HAMMER_RETURN_RETRY_DELAY, "task_hammer_return_retry", TASK_HAMMER_RETURN_RETRY + iOwner)
+		return
+	}
+
+	remove_task(TASK_HAMMER_RETURN_RETRY + iOwner)
+
 	hammer_stop_loop_sound(iOwner, iHammerEnt)
 
 	if (Player[iOwner][PlrHammerCarriesPair])
@@ -1876,7 +1909,8 @@ hammer_return_complete(iOwner, iHammerEnt)
 
 	kc_player_sub_glow(iOwner, HAMMER_GLOW_R, HAMMER_GLOW_G, HAMMER_GLOW_B)
 	kc_player_set_def_maxspeed(iOwner, SPEED)
-	kc_player_unset_game_flag(iOwner, PLGF_IS_DISABLED_INVENTORY)
+	kc_player_unset_game_flag(iOwner, PLGF_IN_HAMMER_THROWN)
+	kc_player_unset_game_flag(iOwner, PLGF_IN_HAMMER_RETURNING)
 
 	hammer_reclaim_knife(iOwner)
 }
@@ -1902,6 +1936,7 @@ hammer_cleanup(iPlayer)
 		return
 
 	remove_task(TASK_HAMMER_FLIGHT_TIMEOUT + iPlayer)
+	remove_task(TASK_HAMMER_RETURN_RETRY + iPlayer)
 
 	if (!is_nullent(iHammerEnt))
 	{
@@ -1932,8 +1967,8 @@ hammer_cleanup(iPlayer)
 
 	kc_player_sub_glow(iPlayer, HAMMER_GLOW_R, HAMMER_GLOW_G, HAMMER_GLOW_B)
 
-	if (!Player[iPlayer][PlrHammerWindup])
-		kc_player_unset_game_flag(iPlayer, PLGF_IS_DISABLED_INVENTORY)
+	kc_player_unset_game_flag(iPlayer, PLGF_IN_HAMMER_THROWN)
+	kc_player_unset_game_flag(iPlayer, PLGF_IN_HAMMER_RETURNING)
 }
 
 public fw_Hammer_PrimaryAttack_Pre(iWeapon)
