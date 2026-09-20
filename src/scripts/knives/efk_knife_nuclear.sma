@@ -1,5 +1,6 @@
 #include <amxmodx>
 #include <fakemeta>
+#include <engine>
 #include <hamsandwich>
 #include <reapi>
 #include <xs>
@@ -54,20 +55,41 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define HAMMER_SEQ_ROTATE_LEFT	2
 
 #define HAMMER_BODY_EFFECT_OFF	0
-#define HAMMER_BODY_EFFECT_ON	3
+#define HAMMER_BODY_EFFECT2_ON	2
 
 
 #define HAMMER_GLOW_R	255
 #define HAMMER_GLOW_G	255
 #define HAMMER_GLOW_B	180
+
+#define HAMMER_GLOW_T_R		255
+#define HAMMER_GLOW_T_G		40
+#define HAMMER_GLOW_T_B		40
+
+#define HAMMER_GLOW_CT_R	40
+#define HAMMER_GLOW_CT_G	80
+#define HAMMER_GLOW_CT_B	255
+
 #define HAMMER_GLOW_TIME	9999.0
+#define HAMMER_GLOW_DIM_AMT	8.0
+#define HAMMER_GLOW_AMT	16.0
 
 #define HAMMER_CATCH_RADIUS	24.0
+
+#define HAMMER_PAIR_GLOW_R	255
+#define HAMMER_PAIR_GLOW_G	130
+#define HAMMER_PAIR_GLOW_B	0
+#define HAMMER_PAIR_GLOW_AMT	24.0
+
+#define HAMMER_CORRECTION_TRACE_DIST	8192.0
+#define HAMMER_CORRECTION_TURN_RATE	1.5
+#define HAMMER_ARC_BOW_FACTOR	0.8
+#define HAMMER_ARC_MIN_DURATION	0.15
 
 #define IMPACT_RADIUS		150.0
 #define IMPACT_KNOCKBACK	1600.0
 #define IMPACT_SLOW_MUL		0.5
-#define IMPACT_SLOW_TIME	2.5
+#define IMPACT_SLOW_TIME	1.5
 
 #define HIT_PLAYER_DAMAGE		10.0
 #define HIT_PLAYER_KNOCKBACK	900.0
@@ -126,7 +148,18 @@ enum _:PlayerData
 	bool:PlrHammerInTornado,
 	Float:PlrHammerViewHideTime,
 	Float:PlrHammerCoffinStickTime,
-	Float:PlrHammerThrowTime
+	Float:PlrHammerThrowTime,
+	bool:PlrHammerCarriesPair,
+	Float:PlrHammerPairEndTime,
+	bool:PlrHammerHasCorrectionTarget,
+	Float:PlrHammerCorrectionTarget[3],
+	Float:PlrHammerLastThinkTime,
+	bool:PlrHammerArcReturn,
+	Float:PlrHammerArcStart[3],
+	Float:PlrHammerArcPerp[3],
+	Float:PlrHammerArcBowMagnitude,
+	Float:PlrHammerArcDuration,
+	Float:PlrHammerArcStartTime
 }
 
 #define Player[%1][%2]	g_ePlayerData[%1 - 1][%2]
@@ -201,6 +234,8 @@ public plugin_init()
 	RegisterHam(Ham_Item_CanDeploy, "weapon_hegrenade", "fw_OtherWeapon_CanDeploy_Pre")
 	RegisterHam(Ham_Item_CanDeploy, "weapon_flashbang", "fw_OtherWeapon_CanDeploy_Pre")
 	RegisterHam(Ham_Item_CanDeploy, "weapon_smokegrenade", "fw_OtherWeapon_CanDeploy_Pre")
+
+	register_impulse(100, "fw_HammerCorrection")
 
 	kc_knife_set_sound(g_iKnifeId, "weapons/knife_deploy1.wav", SOUND_KNIFE_DEPLOY)
 	kc_knife_set_sound(g_iKnifeId, "weapons/knife_hit1.wav", SOUND_KNIFE_HIT1)
@@ -414,17 +449,44 @@ public fw_Player_PostDamage(iPlayer, iInflictor, iAttacker, Float:fDamage, iFlag
 		set_member(iPlayer, m_flVelocityModifier, 1.0)
 }
 
+public efk_calculate_render_colors(iPlayer)
+{
+	if (Player[iPlayer][PlrKnife] != g_iKnifeId)
+		return
+
+	new Float:fGameTime = get_gametime()
+
+	if (Player[iPlayer][PairEndTime] > fGameTime)
+	{
+		new Float:fFraction = (Player[iPlayer][PairEndTime] - fGameTime) / UNABILITY_TIME
+		set_entvar(iPlayer, var_renderamt, HAMMER_PAIR_GLOW_AMT * fFraction)
+		return
+	}
+
+	if (Player[iPlayer][PlrHammerEnt] || Player[iPlayer][PlrHammerWindup])
+		set_entvar(iPlayer, var_renderamt, HAMMER_GLOW_DIM_AMT)
+}
+
 public efk_status_draw(iPlayer, iSubject)
 {
-	new Float:fPair = Player[iSubject][PairEndTime] - get_gametime()
+	new Float:fGameTime = get_gametime()
+	new Float:fPair = Player[iSubject][PairEndTime] - fGameTime
+	new bool:bOnHammer = false
+
+	if (fPair <= 0.0 && Player[iSubject][PlrHammerCarriesPair])
+	{
+		fPair = Player[iSubject][PlrHammerPairEndTime] - fGameTime
+		bOnHammer = true
+	}
+
 	if (fPair > 0.0)
 	{
 		fPair = fPair / UNABILITY_TIME * START_PAIR * 100.0
 
 		set_hudmessage(255, 255, 255, -1.0, -0.30, 0, 0.0, 0.1, 0.1, 0.0, HUDCHANNEL_STATUS)
-		show_hudmessage(iPlayer, "%L %..1f%%", iPlayer, "DAMAGE_REFLECTED_COEFF", fPair)
+		show_hudmessage(iPlayer, "%L %..1f%%%s", iPlayer, bOnHammer ? "DAMAGE_REFLECTED_COEFF_HAMMER" : "DAMAGE_REFLECTED_COEFF", fPair,
+			(bOnHammer && !Player[iSubject][PlrHammerReturning]) ? "^nCorrection (F)" : "")
 	}
-
 }
 
 public efk_change_knife_core_post(iPlayer, iKnifeId)
@@ -446,6 +508,38 @@ public efk_change_knife_core_post(iPlayer, iKnifeId)
 	Player[iPlayer][PlrKnife] = iKnifeId
 }
 
+hammer_glow_color(iPlayer, &r, &g, &b)
+{
+	if (get_member(iPlayer, m_iTeam) == CS_TEAM_CT)
+	{
+		r = HAMMER_GLOW_CT_R
+		g = HAMMER_GLOW_CT_G
+		b = HAMMER_GLOW_CT_B
+	}
+	else
+	{
+		r = HAMMER_GLOW_T_R
+		g = HAMMER_GLOW_T_G
+		b = HAMMER_GLOW_T_B
+	}
+}
+
+hammer_apply_team_glow(iHammerEnt, iOwner)
+{
+	new r, g, b
+	hammer_glow_color(iOwner, r, g, b)
+
+	new Float:vColor[3]
+	vColor[0] = float(r)
+	vColor[1] = float(g)
+	vColor[2] = float(b)
+
+	set_entvar(iHammerEnt, var_rendermode, kRenderNormal)
+	set_entvar(iHammerEnt, var_renderfx, kRenderFxGlowShell)
+	set_entvar(iHammerEnt, var_rendercolor, vColor)
+	set_entvar(iHammerEnt, var_renderamt, HAMMER_GLOW_AMT)
+}
+
 public efk_uncapture(iPlayer)
 {
 	if (Player[iPlayer][PlrKnife] != g_iKnifeId)
@@ -454,6 +548,9 @@ public efk_uncapture(iPlayer)
 	if (Player[iPlayer][PlrHammerEnt] || Player[iPlayer][PlrHammerWindup])
 	{
 		kc_player_add_glow(iPlayer, HAMMER_GLOW_TIME, HAMMER_GLOW_R, HAMMER_GLOW_G, HAMMER_GLOW_B)
+
+		if (Player[iPlayer][PlrHammerEnt] && Player[iPlayer][PlrHammerCarriesPair])
+			hammer_apply_team_glow(Player[iPlayer][PlrHammerEnt], iPlayer)
 		return
 	}
 
@@ -490,6 +587,37 @@ public efk_ability(iPlayer)
 	Player[iPlayer][PairEndTime] = get_gametime() + UNABILITY_TIME
 }
 
+public fw_HammerCorrection(iPlayer)
+{
+	if (Player[iPlayer][PlrKnife] != g_iKnifeId)
+		return PLUGIN_CONTINUE
+
+	new iHammerEnt = Player[iPlayer][PlrHammerEnt]
+	if (!iHammerEnt || Player[iPlayer][PlrHammerReturning] || !Player[iPlayer][PlrHammerCarriesPair])
+		return PLUGIN_CONTINUE
+
+	new Float:vOrigin[3], Float:vEnd[3]
+	get_entvar(iPlayer, var_origin, vOrigin)
+	get_entvar(iPlayer, var_view_ofs, vEnd)
+	xs_vec_add(vOrigin, vEnd, vOrigin)
+
+	get_entvar(iPlayer, var_v_angle, vEnd)
+	engfunc(EngFunc_MakeVectors, vEnd)
+	global_get(glb_v_forward, vEnd)
+	xs_vec_mul_scalar(vEnd, HAMMER_CORRECTION_TRACE_DIST, vEnd)
+	xs_vec_add(vOrigin, vEnd, vEnd)
+
+	new pTrace = create_tr2()
+	engfunc(EngFunc_TraceLine, vOrigin, vEnd, DONT_IGNORE_MONSTERS, iPlayer, pTrace)
+	get_tr2(pTrace, TR_vecEndPos, vEnd)
+	free_tr2(pTrace)
+
+	xs_vec_copy(vEnd, Player[iPlayer][PlrHammerCorrectionTarget])
+	Player[iPlayer][PlrHammerHasCorrectionTarget] = true
+
+	return PLUGIN_HANDLED
+}
+
 public efk_ability2(iPlayer)
 {
 	new iHammerEnt = Player[iPlayer][PlrHammerEnt]
@@ -520,10 +648,20 @@ public efk_ability2(iPlayer)
 	engfunc(EngFunc_EmitSound, iPlayer, CHAN_WEAPON, SOUND_KNIFE_SLASH, 1.0, ATTN_NORM, 0, PITCH_NORM)
 	rg_set_animation(iPlayer, PLAYER_ATTACK1)
 	set_member(iPlayer, m_szAnimExtention, ANIM_EXT_NO_HAMMER)
+
 	kc_player_add_glow(iPlayer, HAMMER_GLOW_TIME, HAMMER_GLOW_R, HAMMER_GLOW_G, HAMMER_GLOW_B)
 
 	if (kc_player_get_vision(iPlayer) != VISION_BLIND && !kc_player_in_freeze(iPlayer) && !kc_player_in_chill(iPlayer))
-		send_msg_ScreenFade((1<<12), (1<<8), (1<<4), {HAMMER_GLOW_R, HAMMER_GLOW_G, HAMMER_GLOW_B}, 60, MSG_ONE, _, iPlayer)
+	{
+		new r, g, b
+		hammer_glow_color(iPlayer, r, g, b)
+
+		new iFadeColor[3]
+		iFadeColor[0] = r
+		iFadeColor[1] = g
+		iFadeColor[2] = b
+		send_msg_ScreenFade((1<<12), (1<<8), (1<<4), iFadeColor, 60, MSG_ONE, _, iPlayer)
+	}
 
 	new iItem = get_member(iPlayer, m_pActiveItem)
 	if (!is_nullent(iItem))
@@ -561,6 +699,7 @@ hammer_cancel_windup(iPlayer)
 	Player[iPlayer][PlrHammerWindup] = false
 	Player[iPlayer][PlrHammerViewHideTime] = 0.0
 	remove_task(TASK_HAMMER_THROW + iPlayer)
+
 	kc_player_sub_glow(iPlayer, HAMMER_GLOW_R, HAMMER_GLOW_G, HAMMER_GLOW_B)
 
 	if (!Player[iPlayer][PlrHammerEnt])
@@ -606,7 +745,7 @@ hammer_throw(iPlayer)
 	set_entvar(iHammerEnt, var_velocity, vVelocity)
 	set_entvar(iHammerEnt, var_angles, vAngles)
 
-	set_entvar(iHammerEnt, var_body, HAMMER_BODY_EFFECT_ON)
+	set_entvar(iHammerEnt, var_body, HAMMER_BODY_EFFECT2_ON)
 	set_entvar(iHammerEnt, var_sequence, HAMMER_SEQ_ROTATE_RIGHT)
 	set_entvar(iHammerEnt, var_framerate, 1.0)
 	set_entvar(iHammerEnt, var_animtime, get_gametime())
@@ -625,6 +764,26 @@ hammer_throw(iPlayer)
 	Player[iPlayer][PlrHammerStuckCoffin] = 0
 	Player[iPlayer][PlrHammerInTornado] = false
 	Player[iPlayer][PlrHammerThrowTime] = get_gametime()
+	Player[iPlayer][PlrHammerHasCorrectionTarget] = false
+	Player[iPlayer][PlrHammerLastThinkTime] = 0.0
+	Player[iPlayer][PlrHammerArcReturn] = false
+
+	if (Player[iPlayer][PairEndTime] > get_gametime())
+	{
+		Player[iPlayer][PlrHammerCarriesPair] = true
+		Player[iPlayer][PlrHammerPairEndTime] = Player[iPlayer][PairEndTime]
+
+		Player[iPlayer][PairEndTime] = 0.0
+		remove_task(TASK_UNABILITY + iPlayer)
+		kc_player_unset_game_flag(iPlayer, PLGF_IN_UNABILITY)
+		kc_player_sub_glow(iPlayer, 255, 130, 0)
+
+		hammer_apply_team_glow(iHammerEnt, iPlayer)
+	}
+	else
+	{
+		Player[iPlayer][PlrHammerCarriesPair] = false
+	}
 
 	kc_player_set_ability3_name(iPlayer, "Force Recall")
 	kc_player_set_ability2_name(iPlayer, "Recall")
@@ -917,7 +1076,95 @@ public hammer_think(iHammerEnt)
 		hammer_handle_tornado(iHammerEnt, iOwner)
 	}
 
+	hammer_update_pair_glow(iOwner, iHammerEnt)
+
 	set_entvar(iHammerEnt, var_nextthink, get_gametime())
+}
+
+hammer_update_pair_glow(iOwner, iHammerEnt)
+{
+	if (!Player[iOwner][PlrHammerCarriesPair])
+		return
+
+	new Float:fGameTime = get_gametime()
+
+	if (fGameTime >= Player[iOwner][PlrHammerPairEndTime])
+	{
+		Player[iOwner][PlrHammerCarriesPair] = false
+		Player[iOwner][PlrHammerHasCorrectionTarget] = false
+		set_entvar(iHammerEnt, var_renderfx, kRenderFxNone)
+		set_entvar(iHammerEnt, var_renderamt, 0.0)
+		return
+	}
+
+	new Float:fFraction = (Player[iOwner][PlrHammerPairEndTime] - fGameTime) / UNABILITY_TIME
+
+	new r, g, b
+	hammer_glow_color(iOwner, r, g, b)
+
+	new Float:vColor[3]
+	vColor[0] = float(r)
+	vColor[1] = float(g)
+	vColor[2] = float(b)
+
+	set_entvar(iHammerEnt, var_rendermode, kRenderNormal)
+	set_entvar(iHammerEnt, var_renderfx, kRenderFxGlowShell)
+	set_entvar(iHammerEnt, var_rendercolor, vColor)
+	set_entvar(iHammerEnt, var_renderamt, HAMMER_PAIR_GLOW_AMT * fFraction)
+
+	if (Player[iOwner][PlrHammerHasCorrectionTarget] && !Player[iOwner][PlrHammerReturning]
+		&& get_entvar(iHammerEnt, var_movetype) != MOVETYPE_NONE)
+		hammer_apply_correction(iOwner, iHammerEnt)
+}
+
+hammer_apply_correction(iOwner, iHammerEnt)
+{
+	new Float:fGameTime = get_gametime()
+	new Float:fDt = Player[iOwner][PlrHammerLastThinkTime] > 0.0
+		? fGameTime - Player[iOwner][PlrHammerLastThinkTime]
+		: 0.0
+	Player[iOwner][PlrHammerLastThinkTime] = fGameTime
+
+	if (fDt <= 0.0 || fDt > 0.5)
+		return
+
+	new Float:vOrigin[3], Float:vVelocity[3]
+	get_entvar(iHammerEnt, var_origin, vOrigin)
+	get_entvar(iHammerEnt, var_velocity, vVelocity)
+
+	new Float:fSpeed = xs_vec_len(vVelocity)
+	if (fSpeed <= 0.0)
+		return
+
+	new Float:vDir[3]
+	xs_vec_copy(vVelocity, vDir)
+	xs_vec_normalize(vDir, vDir)
+
+	new Float:vToTarget[3]
+	xs_vec_sub(Player[iOwner][PlrHammerCorrectionTarget], vOrigin, vToTarget)
+
+	if (xs_vec_len(vToTarget) < HAMMER_CATCH_RADIUS)
+	{
+		Player[iOwner][PlrHammerHasCorrectionTarget] = false
+		return
+	}
+
+	xs_vec_normalize(vToTarget, vToTarget)
+
+	new Float:fBlend = floatmin(1.0, fDt * HAMMER_CORRECTION_TURN_RATE)
+
+	new Float:vNewDir[3]
+	vNewDir[0] = vDir[0] + (vToTarget[0] - vDir[0]) * fBlend
+	vNewDir[1] = vDir[1] + (vToTarget[1] - vDir[1]) * fBlend
+	vNewDir[2] = vDir[2] + (vToTarget[2] - vDir[2]) * fBlend
+	xs_vec_normalize(vNewDir, vNewDir)
+
+	xs_vec_mul_scalar(vNewDir, fSpeed, vNewDir)
+	set_entvar(iHammerEnt, var_velocity, vNewDir)
+
+	new Float:vAngles[3]
+	vector_to_angle(vNewDir, vAngles)
+	set_entvar(iHammerEnt, var_angles, vAngles)
 }
 
 hammer_handle_tornado(iHammerEnt, iOwner)
@@ -1003,7 +1250,10 @@ hammer_check_players_hitbox(iHammerEnt, iOwner)
 		if (kc_player_apply_concentblock(iTarget, iHammerEnt, ATTACK_HEAVINESS_LOW, 150.0, true))
 		{
 			if (!Player[iOwner][PlrHammerReturning])
+			{
+				hammer_setup_arc_return(iOwner, iHammerEnt)
 				hammer_start_return(iOwner, iHammerEnt)
+			}
 		}
 		else
 			hammer_damage_player(iHammerEnt, iOwner, iTarget)
@@ -1318,13 +1568,14 @@ public hammer_ground_think(iHammerEnt)
 hammer_start_return(iOwner, iHammerEnt)
 {
 	Player[iOwner][PlrHammerReturning] = true
+	Player[iOwner][PlrHammerLastThinkTime] = 0.0
 
 	remove_task(TASK_HAMMER_FLIGHT_TIMEOUT + iOwner)
 
 	set_entvar(iHammerEnt, var_solid, SOLID_TRIGGER)
 	set_entvar(iHammerEnt, var_movetype, MOVETYPE_NOCLIP)
 
-	set_entvar(iHammerEnt, var_body, HAMMER_BODY_EFFECT_ON)
+	set_entvar(iHammerEnt, var_body, HAMMER_BODY_EFFECT2_ON)
 	set_entvar(iHammerEnt, var_sequence, HAMMER_SEQ_ROTATE_RIGHT)
 	set_entvar(iHammerEnt, var_framerate, 1.0)
 	set_entvar(iHammerEnt, var_animtime, get_gametime())
@@ -1343,11 +1594,20 @@ hammer_enforce_hidden_hands(iPlayer)
 	if (Player[iPlayer][PlrKnife] != g_iKnifeId)
 		return
 
-	if (Player[iPlayer][PlrHammerEnt] || Player[iPlayer][PlrHammerWindup])
+	if (Player[iPlayer][PlrHammerEnt])
 	{
 		set_pev(iPlayer, pev_viewmodel, 0)
 		set_pev(iPlayer, pev_weaponmodel, 0)
 		set_member(iPlayer, m_szAnimExtention, ANIM_EXT_NO_HAMMER)
+		return
+	}
+
+	if (Player[iPlayer][PlrHammerWindup])
+	{
+		hammer_check_view_hide(iPlayer)
+
+		if (Player[iPlayer][PlrHammerViewHideTime] > 0.0 && get_gametime() >= Player[iPlayer][PlrHammerViewHideTime])
+			set_member(iPlayer, m_szAnimExtention, ANIM_EXT_NO_HAMMER)
 	}
 }
 
@@ -1470,16 +1730,57 @@ bool:hammer_touching_field_wall(iHammerEnt, iOwner)
 	return false
 }
 
-hammer_update_return_velocity(iOwner, iHammerEnt)
+hammer_setup_arc_return(iOwner, iHammerEnt)
 {
-	new Float:vOrigin[3], Float:vTargetOrigin[3], Float:vViewOfs[3], Float:vVelocity[3]
+	Player[iOwner][PlrHammerArcReturn] = true
+
+	new Float:vOrigin[3], Float:vTargetOrigin[3], Float:vViewOfs[3], Float:vToTarget[3]
 	get_entvar(iHammerEnt, var_origin, vOrigin)
 	get_entvar(iOwner, var_origin, vTargetOrigin)
 	get_entvar(iOwner, var_view_ofs, vViewOfs)
 	xs_vec_add(vTargetOrigin, vViewOfs, vTargetOrigin)
 
-	xs_vec_sub(vTargetOrigin, vOrigin, vVelocity)
-	new Float:fDist = xs_vec_len(vVelocity)
+	xs_vec_sub(vTargetOrigin, vOrigin, vToTarget)
+	new Float:fDist = xs_vec_len(vToTarget)
+
+	xs_vec_copy(vOrigin, Player[iOwner][PlrHammerArcStart])
+
+	new Float:vDir[3]
+	xs_vec_copy(vToTarget, vDir)
+	if (fDist > 0.0)
+		xs_vec_normalize(vDir, vDir)
+
+	new Float:vPerp[3]
+	vPerp[0] = -vDir[1]
+	vPerp[1] = vDir[0]
+	vPerp[2] = 0.0
+
+	if (xs_vec_len(vPerp) > 0.0)
+		xs_vec_normalize(vPerp, vPerp)
+	else
+		vPerp[0] = 1.0
+
+	if (random(2))
+		xs_vec_neg(vPerp, vPerp)
+
+	xs_vec_copy(vPerp, Player[iOwner][PlrHammerArcPerp])
+
+	new Float:fSpeed = Player[iOwner][PlrHammerRecallBoosted] ? HAMMER_PULL_SPEED : HAMMER_RECALL_SPEED
+	Player[iOwner][PlrHammerArcBowMagnitude] = fDist * HAMMER_ARC_BOW_FACTOR
+	Player[iOwner][PlrHammerArcDuration] = floatmax(HAMMER_ARC_MIN_DURATION, fDist / fSpeed)
+	Player[iOwner][PlrHammerArcStartTime] = get_gametime()
+}
+
+hammer_update_return_velocity(iOwner, iHammerEnt)
+{
+	new Float:vOrigin[3], Float:vTargetOrigin[3], Float:vViewOfs[3], Float:vToTarget[3]
+	get_entvar(iHammerEnt, var_origin, vOrigin)
+	get_entvar(iOwner, var_origin, vTargetOrigin)
+	get_entvar(iOwner, var_view_ofs, vViewOfs)
+	xs_vec_add(vTargetOrigin, vViewOfs, vTargetOrigin)
+
+	xs_vec_sub(vTargetOrigin, vOrigin, vToTarget)
+	new Float:fDist = xs_vec_len(vToTarget)
 
 	if (fDist < HAMMER_CATCH_RADIUS)
 	{
@@ -1487,18 +1788,55 @@ hammer_update_return_velocity(iOwner, iHammerEnt)
 		return
 	}
 
-	xs_vec_normalize(vVelocity, vVelocity)
-	xs_vec_mul_scalar(vVelocity, Player[iOwner][PlrHammerRecallBoosted] ? HAMMER_PULL_SPEED : HAMMER_RECALL_SPEED, vVelocity)
-	set_entvar(iHammerEnt, var_velocity, vVelocity)
+	new Float:fSpeed = Player[iOwner][PlrHammerRecallBoosted] ? HAMMER_PULL_SPEED : HAMMER_RECALL_SPEED
+
+	new Float:vAimPoint[3]
+	xs_vec_copy(vTargetOrigin, vAimPoint)
+
+	if (Player[iOwner][PlrHammerArcReturn])
+	{
+		new Float:fProgress = floatmin(1.0,
+			(get_gametime() - Player[iOwner][PlrHammerArcStartTime]) / Player[iOwner][PlrHammerArcDuration])
+		new Float:fOffset = Player[iOwner][PlrHammerArcBowMagnitude] * floatsin(fProgress * 180.0, degrees)
+
+		vAimPoint[0] += Player[iOwner][PlrHammerArcPerp][0] * fOffset
+		vAimPoint[1] += Player[iOwner][PlrHammerArcPerp][1] * fOffset
+		vAimPoint[2] += Player[iOwner][PlrHammerArcPerp][2] * fOffset
+	}
+
+	new Float:vNewVelocity[3]
+	xs_vec_sub(vAimPoint, vOrigin, vNewVelocity)
+
+	if (xs_vec_len(vNewVelocity) <= 0.0)
+		xs_vec_copy(vToTarget, vNewVelocity)
+
+	xs_vec_normalize(vNewVelocity, vNewVelocity)
+	xs_vec_mul_scalar(vNewVelocity, fSpeed, vNewVelocity)
+	set_entvar(iHammerEnt, var_velocity, vNewVelocity)
 
 	new Float:vAngles[3]
-	vector_to_angle(vVelocity, vAngles)
+	vector_to_angle(vNewVelocity, vAngles)
 	set_entvar(iHammerEnt, var_angles, vAngles)
 }
 
 hammer_return_complete(iOwner, iHammerEnt)
 {
 	hammer_stop_loop_sound(iOwner, iHammerEnt)
+
+	if (Player[iOwner][PlrHammerCarriesPair])
+	{
+		new Float:fLeftover = Player[iOwner][PlrHammerPairEndTime] - get_gametime()
+		if (fLeftover > 0.0)
+		{
+			new Float:fLeftoverPercent = fLeftover / UNABILITY_TIME * START_PAIR * 100.0
+			kc_player_set_abil2_charge(iOwner, floatmin(100.0, kc_player_get_abil2_charge(iOwner) + fLeftoverPercent))
+		}
+
+		Player[iOwner][PlrHammerCarriesPair] = false
+	}
+
+	Player[iOwner][PlrHammerHasCorrectionTarget] = false
+	Player[iOwner][PlrHammerArcReturn] = false
 
 	if (kc_player_get_capture(iOwner) != CAPTURE_NONE)
 		kc_player_set_capture(iOwner, CAPTURE_NONE)
@@ -1577,6 +1915,9 @@ hammer_cleanup(iPlayer)
 	Player[iPlayer][PlrHammerReturning] = false
 	Player[iPlayer][PlrHammerRecallBoosted] = false
 	Player[iPlayer][PlrHammerStuckCoffin] = 0
+	Player[iPlayer][PlrHammerCarriesPair] = false
+	Player[iPlayer][PlrHammerHasCorrectionTarget] = false
+	Player[iPlayer][PlrHammerArcReturn] = false
 
 	kc_player_set_ability3_name(iPlayer, "")
 	kc_player_set_ability2_name(iPlayer, "")
