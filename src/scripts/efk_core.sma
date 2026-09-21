@@ -1470,13 +1470,13 @@ public RG_CBasePlayer_PreThink_Pre(iPlayer)
 						}
 
 						Player[iPlayer][PlrGlowCount]--
-
-						if (!Player[iPlayer][PlrGlowCount])
-							player_reset_render(iPlayer)
-						else
-							player_calculate_render_colors(iPlayer)
 					}
 				}
+
+				if (Player[iPlayer][PlrGlowCount])
+					player_calculate_render_colors(iPlayer)
+				else
+					player_reset_render(iPlayer)
 			}
 			case VIS_SHADOW:
 			{
