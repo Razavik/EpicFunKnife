@@ -91,10 +91,10 @@ new const CLASSNAME_SPHERE_SHELL[]	= "next21_razor_sphere_sh"
 #define DEATH_STEAL_MAX_ADDITION	20.0
 #define DEATH_STEAL_MIN_ADDITION	5.0
 
-#define RAGE_MIN_POWER_SPEED		130.0
-#define RAGE_HIT_COST				24.0
-#define RAGE_PUSH_FORCE				350.0
-#define RAGE_PUSH_LIFT				280.0
+#define DRIVE_MIN_POWER_SPEED		130.0
+#define DRIVE_HIT_COST				24.0
+#define DRIVE_PUSH_FORCE				350.0
+#define DRIVE_PUSH_LIFT				280.0
 
 #define FFADE_MODULATE				0x0004
 #define FFADE_STAYOUT				0x0008
@@ -103,7 +103,7 @@ new const CLASSNAME_SPHERE_SHELL[]	= "next21_razor_sphere_sh"
 #define STATUS_COLOR_G				0
 #define STATUS_COLOR_B				255
 
-new const RAGE_MODE_NAMES[][] =
+new const DRIVE_MODE_NAMES[][] =
 {
 	"Off",
 	"On"
@@ -133,7 +133,7 @@ enum _:PlayerData
 	PlrTeam,
 	PlrStealingTarget,
 	Float:PlrStolenSpeed[MAX_PLAYERS + 1],
-	bool:PlrRageMode,
+	bool:PlrDriveMode,
 	bool:PlrPushMarkedBy[MAX_PLAYERS + 1],
 	bool:PlrInPush,
 	bool:PlrPunchHitEnemy,
@@ -256,10 +256,10 @@ public client_disconnected(iPlayer)
 	Player[iPlayer][PlrIsAlive] = false
 	Player[iPlayer][PlrTeam] = 0
 
-	if (Player[iPlayer][PlrRageMode])
+	if (Player[iPlayer][PlrDriveMode])
 	{
-		Player[iPlayer][PlrRageMode] = false
-		kc_player_unset_game_flag(iPlayer, PLGF_IN_POWERSPEED_RAGE)
+		Player[iPlayer][PlrDriveMode] = false
+		kc_player_unset_game_flag(iPlayer, PLGF_IN_POWERSPEED_DRIVE)
 	}
 
 	razor_punch_end(iPlayer)
@@ -300,8 +300,8 @@ public RG_CBasePlayer_Spawn_Post(iPlayer)
 		Player[iPlayer][PlrFallDamageRestore] = 0
 		Player[iPlayer][PlrWasPunchFallDamage] = false
 
-		if (Player[iPlayer][PlrRageMode])
-			razor_set_rage(iPlayer, false)
+		if (Player[iPlayer][PlrDriveMode])
+			razor_set_drive(iPlayer, false)
 
 		for (new i; i <= MaxClients; i++)
 			Player[iPlayer][PlrPushMarkedBy][i] = false
@@ -314,8 +314,8 @@ public RG_CBasePlayer_PreThink_Post(iPlayer)
 {
 	new Float:fGameTime = get_gametime()
 
-	if (Player[iPlayer][PlrRageMode] && kc_player_get_powerspeed(iPlayer) < RAGE_MIN_POWER_SPEED)
-		razor_set_rage(iPlayer, false)
+	if (Player[iPlayer][PlrDriveMode] && kc_player_get_powerspeed(iPlayer) < DRIVE_MIN_POWER_SPEED)
+		razor_set_drive(iPlayer, false)
 
 	new iStealingTarget = Player[iPlayer][PlrStealingTarget]
 
@@ -396,7 +396,7 @@ public RG_CBasePlayer_PreThink_Post(iPlayer)
 		vRunSpeed[2] = 0.0
 
 		if (Player[iPlayer][PlrInPush]
-			|| (kc_player_get_powerspeed(iPlayer) >= RAGE_MIN_POWER_SPEED && xs_vec_len(vRunSpeed) > 10.0))
+			|| (kc_player_get_powerspeed(iPlayer) >= DRIVE_MIN_POWER_SPEED && xs_vec_len(vRunSpeed) > 10.0))
 		{
 			razor_trail_start(iPlayer)
 		}
@@ -461,7 +461,7 @@ public RG_CBasePlayer_Killed_Pre(iVictim, iAttacker)
 		if (iTarget == iVictim || !Player[iTarget][PlrIsAlive] || Player[iTarget][PlrKnife] != g_iKnifeId)
 			continue
 
-		if (Player[iVictim][PlrPushMarkedBy][iTarget] && !Player[iTarget][PlrRageMode])
+		if (Player[iVictim][PlrPushMarkedBy][iTarget] && !Player[iTarget][PlrDriveMode])
 			continue
 
 		new Float:fPowerSpeed = kc_player_get_powerspeed(iTarget)
@@ -532,7 +532,7 @@ public Ham_PlayerTraceAttack_Pre(iVictim, iAttacker, Float:fDamage, Float:vDir[3
 
 	if (Player[iAttacker][PlrKnife] == g_iKnifeId && Player[iVictim][PlrKnife] != g_iKnifeId)
 	{
-		if (!Player[iAttacker][PlrRageMode])
+		if (!Player[iAttacker][PlrDriveMode])
 		{
 			Player[iAttacker][PlrStolenSpeed][iVictim] += 4.0
 
@@ -572,7 +572,7 @@ public RG_CBasePlayer_TraceAttack_Pre(iVictim, iAttacker, Float:fDamage, Float:v
 	if (!is_entity_player(iAttacker))
 		return HC_CONTINUE
 
-	if (Player[iAttacker][PlrKnife] != g_iKnifeId || !Player[iAttacker][PlrRageMode] || get_user_weapon(iAttacker) != CSW_KNIFE)
+	if (Player[iAttacker][PlrKnife] != g_iKnifeId || !Player[iAttacker][PlrDriveMode] || get_user_weapon(iAttacker) != CSW_KNIFE)
 		return HC_CONTINUE
 
 	if (Player[iVictim][PlrKnife] == g_iKnifeId || Player[iAttacker][PlrTeam] == Player[iVictim][PlrTeam])
@@ -598,14 +598,14 @@ public RG_CBasePlayer_TraceAttack_Pre(iVictim, iAttacker, Float:fDamage, Float:v
 	if (get_distance_f(vVictimOrigin, vAttackerOrigin) > 100)
 		return HC_CONTINUE
 
-	kc_player_set_powerspeed(iAttacker, kc_player_get_powerspeed(iAttacker) - RAGE_HIT_COST)
+	kc_player_set_powerspeed(iAttacker, kc_player_get_powerspeed(iAttacker) - DRIVE_HIT_COST)
 	Player[iVictim][PlrPushMarkedBy][iAttacker] = true
 
 	new Float:vPush[3]
 	xs_vec_copy(vDirection, vPush)
 	vPush[2] = 0.0
 	xs_vec_normalize(vPush, vPush)
-	xs_vec_mul_scalar(vPush, RAGE_PUSH_FORCE, vPush)
+	xs_vec_mul_scalar(vPush, DRIVE_PUSH_FORCE, vPush)
 
 	new bool:bInDucking = get_entvar(iVictim, var_flags) & (FL_DUCKING | FL_ONGROUND) == (FL_DUCKING | FL_ONGROUND)
 	if (bInDucking)
@@ -614,7 +614,7 @@ public RG_CBasePlayer_TraceAttack_Pre(iVictim, iAttacker, Float:fDamage, Float:v
 	new Float:vVictimVelocity[3]
 	get_entvar(iVictim, var_velocity, vVictimVelocity)
 	xs_vec_add(vVictimVelocity, vPush, vPush)
-	vPush[2] = RAGE_PUSH_LIFT
+	vPush[2] = DRIVE_PUSH_LIFT
 
 	kc_player_unfreeze(iVictim)
 	set_member(iVictim, m_flVelocityModifier, 1.0)
@@ -841,13 +841,13 @@ public efk_status_draw(iPlayer, iSubject, iKnifeId)
 
 	if (iSphereEnt)
 	{
-		show_hudmessage(iPlayer, "Blow Up (E): %i power^nCorrection (F)^nRage (T): %s",
+		show_hudmessage(iPlayer, "Blow Up (E): %i power^nCorrection (F)^nDrive (T): %s",
 			get_entvar(iSphereEnt, var_sphere_power),
-			RAGE_MODE_NAMES[_:Player[iSubject][PlrRageMode]])
+			DRIVE_MODE_NAMES[_:Player[iSubject][PlrDriveMode]])
 	}
 	else
 	{
-		show_hudmessage(iPlayer, "Rage (T): %s", RAGE_MODE_NAMES[_:Player[iSubject][PlrRageMode]])
+		show_hudmessage(iPlayer, "Drive (T): %s", DRIVE_MODE_NAMES[_:Player[iSubject][PlrDriveMode]])
 	}
 
 	return PLUGIN_CONTINUE
@@ -873,8 +873,8 @@ public efk_change_knife_core_post(iPlayer, iKnifeId)
 		if (kc_player_get_powerspeed(iPlayer) > 0.0)
 			kc_player_set_powerspeed(iPlayer, 0.0)
 
-		if (Player[iPlayer][PlrRageMode])
-			razor_set_rage(iPlayer, false)
+		if (Player[iPlayer][PlrDriveMode])
+			razor_set_drive(iPlayer, false)
 
 		Player[iPlayer][PlrFallDamageRestore] = 0
 		Player[iPlayer][PlrWasPunchFallDamage] = false
@@ -1105,33 +1105,33 @@ public efk_ability_toggle(iPlayer)
 	if (Player[iPlayer][PlrKnife] != g_iKnifeId)
 		return PLUGIN_CONTINUE
 
-	if (!Player[iPlayer][PlrRageMode])
+	if (!Player[iPlayer][PlrDriveMode])
 	{
-		if (kc_player_get_powerspeed(iPlayer) < RAGE_MIN_POWER_SPEED)
+		if (kc_player_get_powerspeed(iPlayer) < DRIVE_MIN_POWER_SPEED)
 			return PLUGIN_HANDLED
 
-		razor_set_rage(iPlayer, true)
+		razor_set_drive(iPlayer, true)
 	}
 	else
 	{
-		razor_set_rage(iPlayer, false)
+		razor_set_drive(iPlayer, false)
 	}
 
 	return PLUGIN_HANDLED
 }
 
-razor_set_rage(iPlayer, bool:bEnable)
+razor_set_drive(iPlayer, bool:bEnable)
 {
-	Player[iPlayer][PlrRageMode] = bEnable
+	Player[iPlayer][PlrDriveMode] = bEnable
 
 	if (bEnable)
 	{
-		kc_player_set_game_flag(iPlayer, PLGF_IN_POWERSPEED_RAGE)
+		kc_player_set_game_flag(iPlayer, PLGF_IN_POWERSPEED_DRIVE)
 		send_msg_ScreenFade((1<<12), 0, FFADE_MODULATE | FFADE_STAYOUT, {STATUS_COLOR_R, STATUS_COLOR_G, STATUS_COLOR_B}, 22, MSG_ONE, _, iPlayer)
 	}
 	else
 	{
-		kc_player_unset_game_flag(iPlayer, PLGF_IN_POWERSPEED_RAGE)
+		kc_player_unset_game_flag(iPlayer, PLGF_IN_POWERSPEED_DRIVE)
 		send_msg_ScreenFade((1<<10), 0, FFADE_MODULATE, {STATUS_COLOR_R, STATUS_COLOR_G, STATUS_COLOR_B}, 0, MSG_ONE, _, iPlayer)
 	}
 }
