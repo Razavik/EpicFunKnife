@@ -611,9 +611,6 @@ public RG_CBasePlayer_TraceAttack_Pre(iVictim, iAttacker, Float:fDamage, Float:v
 	if (bInDucking)
 		xs_vec_mul_scalar(vPush, 0.5, vPush)
 
-	new Float:vVictimVelocity[3]
-	get_entvar(iVictim, var_velocity, vVictimVelocity)
-	xs_vec_add(vVictimVelocity, vPush, vPush)
 	vPush[2] = DRIVE_PUSH_LIFT
 
 	kc_player_unfreeze(iVictim)
