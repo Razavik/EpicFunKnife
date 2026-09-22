@@ -25,7 +25,7 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define ABIL1_CHARGE	5.2632
 
 #define ABIL2_NAME		"Hammer Toss"
-#define ABIL2_CHARGE	50.0
+#define ABIL2_CHARGE	8.3333
 
 #define ABIL3_NAME		"Hot Speed"
 #define ABIL3_CHARGE	10.0
