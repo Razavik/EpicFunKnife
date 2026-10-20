@@ -257,6 +257,11 @@ enum _:BlockAirFlags(<<=1)
 #define CHILL_TIME					3.0
 
 #define DMG_NPC_SLOW				DMG_SLOWBURN
+#define DMG_NPC_BLIND				DMG_RADIATION
+#define DMG_NPC_HOLD				DMG_PARALYZE
+#define DMG_NPC_ACID				DMG_NERVEGAS
+#define DMG_NPC_NOGLOW				DMG_SHOCK
+#define DMG_NPC_HEAL				DMG_DROWNRECOVER
 
 #define FALL_DAMAGE					0.9
 #define FALL_EASING					0.4
