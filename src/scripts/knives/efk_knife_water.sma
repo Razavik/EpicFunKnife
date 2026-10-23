@@ -184,6 +184,7 @@ public plugin_init()
 
 	register_forward(FM_UpdateClientData, "fw_UpdateClientData_Post", true)
 	register_forward(FM_AddToFullPack, "fw_AddToFullPack", true)
+	register_forward(FM_ShouldCollide, "fw_ShouldCollide")
 
 	register_impulse(100, "fw_PlayerFlashlight")
 }
@@ -978,4 +979,20 @@ set_restore_air_task(iPlayer)
 {
 	set_task(5.0, "restore_air_task", TASK_RESTOREAIR + iPlayer, .flags="b")
 	set_entvar(iPlayer, var_air_finished, get_gametime() + AIRTIME)
+}
+
+public fw_ShouldCollide(iTouched, iOther)
+{
+	if (iTouched <= MaxClients || iOther <= MaxClients)
+		return FMRES_IGNORED
+
+	new iImpulseA = get_entvar(iTouched, var_impulse), iImpulseB = get_entvar(iOther, var_impulse)
+	if ((iImpulseA == IMPULSE_MINION && iImpulseB == IMPULSE_EMBODIMENT)
+		|| (iImpulseA == IMPULSE_EMBODIMENT && iImpulseB == IMPULSE_MINION))
+	{
+		forward_return(FMV_CELL, 0)
+		return FMRES_SUPERCEDE
+	}
+
+	return FMRES_IGNORED
 }

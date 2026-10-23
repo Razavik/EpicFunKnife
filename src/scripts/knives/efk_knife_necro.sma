@@ -135,6 +135,8 @@ new const SOUND_SOUL[] = "next21_efk/soul_pulse.wav"
 #define ULTRALISK_RAGE_SPEED	320.0
 #define ULTRALISK_RAGE_ATTACK_INTERVAL	0.6
 #define ULTRALISK_BURROW_TOGGLE_PAUSE	1.5
+#define ULTRALISK_WAKE_TIME	1.9
+#define ULTRALISK_BURY_TIME	1.0
 #define ULTRALISK_BURROW_REGEN_MUL	4.0
 #define HYDRA_MELEE_DAMAGE_MUL	0.5
 
@@ -253,7 +255,7 @@ new const SOUNDS_ZERGLING_MOVE[][] =
 }
 
 new const Float:ZERGLING_MOVE_VOICE_DELAY[] = {0.62, 0.56, 0.6}
-new const Float:ULTRALISK_MOVE_VOICE_DELAY[] = {3.3, 3.3, 3.3, 3.3}
+new const Float:ULTRALISK_MOVE_VOICE_DELAY[] = {1.65, 1.65, 1.65}
 
 new const SOUNDS_ZERGLING_HIT[][] =
 {
@@ -301,8 +303,14 @@ new const SOUNDS_ULTRALISK_MOVE[][] =
 {
 	"next21_efk/ultralisk/ultralisk_movement_00.wav",
 	"next21_efk/ultralisk/ultralisk_movement_01.wav",
-	"next21_efk/ultralisk/ultralisk_movement_02.wav",
-	"next21_efk/ultralisk/ultralisk_movement_03.wav"
+	"next21_efk/ultralisk/ultralisk_movement_02.wav"
+}
+
+new const SOUNDS_ULTRALISK_READY[][] =
+{
+	"next21_efk/ultralisk/ultralisk_ready0.wav",
+	"next21_efk/ultralisk/ultralisk_ready1.wav",
+	"next21_efk/ultralisk/ultralisk_ready2.wav"
 }
 
 new const SOUNDS_ULTRALISK_BURROW[][] =
@@ -425,7 +433,7 @@ new
 	g_iMinionBurnCycles[MAX_ENTITIES_NUM + 1], g_iMinionBurnAttacker[MAX_ENTITIES_NUM + 1],
 	Float:g_fMinionBurnNextTick[MAX_ENTITIES_NUM + 1], g_iMinionIceBlock[MAX_ENTITIES_NUM + 1],
 	Float:g_fMinionNextMoveVoice[MAX_ENTITIES_NUM + 1], Float:g_fMinionHoldUntil[MAX_ENTITIES_NUM + 1], bool:g_bMinionHoldAcid[MAX_ENTITIES_NUM + 1], bool:g_bMinionHoldNoGlow[MAX_ENTITIES_NUM + 1],
-	Float:g_fUltraRageUntil[MAX_ENTITIES_NUM + 1], Float:g_fUltraRageReadyAt[MAX_ENTITIES_NUM + 1], bool:g_bUltraBurrowed[MAX_ENTITIES_NUM + 1], Float:g_fUltraBurrowToggleAt[MAX_ENTITIES_NUM + 1], g_iUltraBurrowMark[MAX_ENTITIES_NUM + 1],
+	Float:g_fUltraRageUntil[MAX_ENTITIES_NUM + 1], Float:g_fUltraRageReadyAt[MAX_ENTITIES_NUM + 1], bool:g_bUltraBurrowed[MAX_ENTITIES_NUM + 1], bool:g_bUltraHidden[MAX_ENTITIES_NUM + 1], Float:g_fUltraBuryDoneAt[MAX_ENTITIES_NUM + 1], Float:g_fUltraBurrowToggleAt[MAX_ENTITIES_NUM + 1], g_iUltraBurrowMark[MAX_ENTITIES_NUM + 1], Float:g_fUltraWakeUntil[MAX_ENTITIES_NUM + 1],
 	Float:g_fSpitReadyAt[MAX_ENTITIES_NUM + 1], bool:g_bMinionClimb[MAX_ENTITIES_NUM + 1], Float:g_fClimbWallDist[MAX_ENTITIES_NUM + 1], Float:g_vClimbDir[MAX_ENTITIES_NUM + 1][3], Float:g_vClimbFace[MAX_ENTITIES_NUM + 1][3], bool:g_bThinkHeld, bool:g_bMinionDot, bool:g_bFloatingDamage,
 	g_pShockwaveSpr, g_pBloodSpr, g_pBloodSpraySpr, g_pGibs[5], g_pKnifePMdl,
 	g_pRockGibsMdl, g_pSmokeSpr, g_pFlameSpr, g_pPointSpr, g_pPointRedSpr, g_pPointYellowSpr, g_pLaserbeamSpr
@@ -458,6 +466,7 @@ public plugin_precache()
 	necro_precache_sounds(SOUNDS_ULTRALISK_DEATH, sizeof SOUNDS_ULTRALISK_DEATH)
 	necro_precache_sounds(SOUNDS_ULTRALISK_HIT, sizeof SOUNDS_ULTRALISK_HIT)
 	necro_precache_sounds(SOUNDS_ULTRALISK_MOVE, sizeof SOUNDS_ULTRALISK_MOVE)
+	necro_precache_sounds(SOUNDS_ULTRALISK_READY, sizeof SOUNDS_ULTRALISK_READY)
 	necro_precache_sounds(SOUNDS_ULTRALISK_BURROW, sizeof SOUNDS_ULTRALISK_BURROW)
 	precache_sound(SOUND_ULTRALISK_RAGE)
 	g_pRockGibsMdl = precache_model("models/rockgibs.mdl")
@@ -878,6 +887,7 @@ necro_burrow_create_mark(iMinion, const Float:vOrigin[3])
 
 	engfunc(EngFunc_SetModel, iMark, MODEL_BURROW_MARK)
 	engfunc(EngFunc_SetSize, iMark, Float:{-8.0, -8.0, 0.0}, Float:{8.0, 8.0, 4.0})
+	set_entvar(iMark, var_skin, Player[get_entvar(iMinion, var_npcowner)][PlrTeam] - 1)
 	set_entvar(iMark, var_rendermode, kRenderNormal)
 	set_entvar(iMark, var_sequence, 0)
 	set_entvar(iMark, var_framerate, 1.0)
@@ -934,20 +944,32 @@ necro_ultralisk_burrow(iPlayer)
 	get_entvar(iMinion, var_origin, vOrigin)
 
 	g_bUltraBurrowed[iMinion] = true
-	g_fUltraBurrowToggleAt[iMinion] = fGameTime + ULTRALISK_BURROW_TOGGLE_PAUSE
+	g_fUltraBuryDoneAt[iMinion] = fGameTime + ULTRALISK_BURY_TIME
+	g_fUltraBurrowToggleAt[iMinion] = g_fUltraBuryDoneAt[iMinion] + ULTRALISK_BURROW_TOGGLE_PAUSE
 
 	g_fUltraRageUntil[iMinion] = 0.0
 	necro_clear_rage_glow(iMinion)
 
 	minion_halt(iMinion)
 	set_entvar(iMinion, var_npctarget, 0)
-	set_entvar(iMinion, var_solid, SOLID_NOT)
-	set_entvar(iMinion, var_takedamage, 0.0)
-	set_entvar(iMinion, var_effects, get_entvar(iMinion, var_effects) | EF_NODRAW)
 
 	Player[iPlayer][PlrNpcAction][MINION_SLOT_HEAVY] = NPC_ACTION_MOVE
 	Player[iPlayer][PlrNpcActionTarget][MINION_SLOT_HEAVY] = 0
 	xs_vec_copy(vOrigin, PlrActionOrigin(iPlayer, MINION_SLOT_HEAVY))
+
+	necro_burrow_effects(vOrigin)
+	set_entvar(iMinion, var_nextthink, fGameTime + 0.05)
+}
+
+necro_ultralisk_hide(iMinion)
+{
+	new Float:vOrigin[3]
+	get_entvar(iMinion, var_origin, vOrigin)
+
+	g_bUltraHidden[iMinion] = true
+	set_entvar(iMinion, var_solid, SOLID_NOT)
+	set_entvar(iMinion, var_takedamage, 0.0)
+	set_entvar(iMinion, var_effects, get_entvar(iMinion, var_effects) | EF_NODRAW)
 
 	necro_burrow_effects(vOrigin)
 	necro_burrow_create_mark(iMinion, vOrigin)
@@ -959,6 +981,8 @@ necro_ultralisk_emerge(iMinion)
 		return
 
 	g_bUltraBurrowed[iMinion] = false
+	g_bUltraHidden[iMinion] = false
+	g_fUltraBuryDoneAt[iMinion] = 0.0
 	g_fUltraBurrowToggleAt[iMinion] = get_gametime() + ULTRALISK_BURROW_TOGGLE_PAUSE
 	necro_burrow_remove_mark(iMinion)
 
@@ -977,7 +1001,16 @@ necro_ultralisk_emerge(iMinion)
 			check_stuck(i, iMinion, vOrigin)
 
 	necro_burrow_effects(vOrigin)
-	set_entvar(iMinion, var_nextthink, get_gametime() + 0.1)
+
+	new Float:fGameTime = get_gametime()
+	necro_voice_ready(iMinion)
+	g_fUltraWakeUntil[iMinion] = fGameTime + ULTRALISK_WAKE_TIME
+	set_entvar(iMinion, var_fuser4, fGameTime + ULTRALISK_WAKE_TIME)
+	set_entvar(iMinion, var_animtime, fGameTime)
+	set_entvar(iMinion, var_frame, 0.0)
+	set_entvar(iMinion, var_framerate, 1.0)
+	set_entvar(iMinion, var_sequence, 1)
+	set_entvar(iMinion, var_nextthink, fGameTime + 0.05)
 }
 
 necro_burrow_think(iMinion, Float:fGameTime)
@@ -1405,7 +1438,7 @@ minion_create_lifebar(iOwner, iSlot, iMinion)
 	if (is_nullent(iBar))
 		return
 
-	new bool:bHydra = get_entvar(iMinion, var_npctype) == 2
+	new bool:bHydra = get_entvar(iMinion, var_npctype) != 0
 	if (iSlot == 1)
 		engfunc(EngFunc_SetModel, iBar, bHydra ? MODEL_MINION_LIFEBAR_B_H : MODEL_MINION_LIFEBAR_B)
 	else
@@ -1455,11 +1488,11 @@ public necro_AddToFullPack(es_state, e, ent, host, hostflags, player)
 			get_es(es_state, ES_Origin, vRenderOrigin)
 			get_entvar(ent, var_origin, vProbeStart)
 			vProbeStart[2] += 4.0
-			xs_vec_mul_scalar(g_vClimbDir[ent], CLIMB_WALL_REACH, vProbeEnd)
+			xs_vec_mul_scalar(g_vClimbDir[ent], necro_wall_reach(ent), vProbeEnd)
 			xs_vec_add(vProbeStart, vProbeEnd, vProbeEnd)
 			engfunc(EngFunc_TraceLine, vProbeStart, vProbeEnd, IGNORE_MONSTERS, ent, g_trRender)
 			get_tr2(g_trRender, TR_flFraction, fFraction)
-			xs_vec_mul_scalar(g_vClimbDir[ent], floatclamp(fFraction * CLIMB_WALL_REACH - CLIMB_MODEL_MARGIN, 0.0, CLIMB_MODEL_SHIFT), vShift)
+			xs_vec_mul_scalar(g_vClimbDir[ent], floatclamp(fFraction * necro_wall_reach(ent) - CLIMB_MODEL_MARGIN, 0.0, CLIMB_MODEL_SHIFT), vShift)
 			xs_vec_add(vRenderOrigin, vShift, vRenderOrigin)
 			set_es(es_state, ES_Origin, vRenderOrigin)
 		}
@@ -1478,7 +1511,7 @@ public necro_AddToFullPack(es_state, e, ent, host, hostflags, player)
 		return FMRES_IGNORED
 	}
 
-	if (g_bUltraBurrowed[iMinion] && Player[host][PlrTeam] != Player[iOwner][PlrTeam])
+	if (g_bUltraHidden[iMinion] && Player[host][PlrTeam] != Player[iOwner][PlrTeam])
 	{
 		set_es(es_state, ES_Effects, EF_NODRAW)
 		return FMRES_IGNORED
@@ -1493,7 +1526,7 @@ public necro_AddToFullPack(es_state, e, ent, host, hostflags, player)
 	}
 
 	if (Player[host][PlrTeam] != Player[iOwner][PlrTeam])
-		set_es(es_state, ES_ModelIndex, get_entvar(iMinion, var_npctype) == 2 ? g_iLifebarEnemyHydra : g_iLifebarEnemy)
+		set_es(es_state, ES_ModelIndex, get_entvar(iMinion, var_npctype) ? g_iLifebarEnemyHydra : g_iLifebarEnemy)
 	else
 		set_es(es_state, ES_ModelIndex, get_entvar(ent, var_modelindex))
 	set_es(es_state, ES_Effects, get_es(es_state, ES_Effects) & ~EF_NODRAW)
@@ -1868,7 +1901,7 @@ public spit_think(iSpitEnt)
 			new iImpulse = get_entvar(iEnt, var_impulse)
 			if (iImpulse == IMPULSE_MINION)
 			{
-				if (g_bUltraBurrowed[iEnt] || get_entvar(iEnt, var_skin) + 1 == Player[iOwner][PlrTeam])
+				if (g_bUltraHidden[iEnt] || get_entvar(iEnt, var_skin) + 1 == Player[iOwner][PlrTeam])
 					continue
 			}
 			else if (iImpulse != IMPULSE_FAKEPLAYER && iImpulse != IMPULSE_PRESENT)
@@ -2347,7 +2380,7 @@ Float:necro_laser_trace(iPlayer, iHeavy, const Float:vStart[3], const Float:vDir
 
 	while ((iEnt = rg_find_ent_by_class(iEnt, _CLASSNAME_MINION)))
 	{
-		if ((get_entvar(iEnt, var_flags) & FL_KILLME) || g_bUltraBurrowed[iEnt] || get_entvar(iEnt, var_skin) + 1 == Player[iPlayer][PlrTeam])
+		if ((get_entvar(iEnt, var_flags) & FL_KILLME) || g_bUltraHidden[iEnt] || get_entvar(iEnt, var_skin) + 1 == Player[iPlayer][PlrTeam])
 			continue
 
 		get_entvar(iEnt, var_absmin, vMins)
@@ -2384,7 +2417,7 @@ bool:necro_is_enemy_entity(iOwner, iEnt)
 	if (is_entity_player(iEnt))
 		return bool:(Player[iEnt][PlrIsAlive] && Player[iEnt][PlrTeam] != Player[iOwner][PlrTeam])
 
-	if (!is_entity(iEnt) || get_entvar(iEnt, var_impulse) != IMPULSE_MINION || g_bUltraBurrowed[iEnt])
+	if (!is_entity(iEnt) || get_entvar(iEnt, var_impulse) != IMPULSE_MINION || g_bUltraHidden[iEnt])
 		return false
 
 	return bool:(get_entvar(iEnt, var_skin) + 1 != Player[iOwner][PlrTeam])
@@ -2798,7 +2831,26 @@ necro_minion_think(iMinion, bool:bHeavy)
 
 	if (bHeavy && g_bUltraBurrowed[iMinion])
 	{
+		if (!g_bUltraHidden[iMinion])
+		{
+			if (fGameTime < g_fUltraBuryDoneAt[iMinion])
+			{
+				minion_halt(iMinion)
+				set_entvar(iMinion, var_nextthink, fGameTime + 0.05)
+				return
+			}
+
+			necro_ultralisk_hide(iMinion)
+		}
+
 		necro_burrow_think(iMinion, fGameTime)
+		return
+	}
+
+	if (bHeavy && g_fUltraWakeUntil[iMinion] > fGameTime)
+	{
+		minion_halt(iMinion)
+		set_entvar(iMinion, var_nextthink, fGameTime + 0.05)
 		return
 	}
 
@@ -3042,6 +3094,16 @@ Float:necro_climb_gap(iMinion)
 	return vMaxs[0] + 1.0
 }
 
+Float:necro_probe_dist(iMinion)
+{
+	return floatmax(22.0, necro_climb_gap(iMinion) + 4.0)
+}
+
+Float:necro_wall_reach(iMinion)
+{
+	return floatmax(CLIMB_WALL_REACH, necro_climb_gap(iMinion) + 8.0)
+}
+
 bool:necro_climb_limited(iMinion)
 {
 	new Float:vMaxs[3]
@@ -3133,7 +3195,7 @@ bool:necro_climb_try(iMinion, const Float:vOrigin[3], const Float:vDestination[3
 
 	xs_vec_copy(vOrigin, vStart)
 	vStart[2] += 6.0
-	xs_vec_mul_scalar(vDir, CLIMB_WALL_REACH, vEnd)
+	xs_vec_mul_scalar(vDir, necro_wall_reach(iMinion), vEnd)
 	xs_vec_add(vStart, vEnd, vEnd)
 	engfunc(EngFunc_TraceLine, vStart, vEnd, IGNORE_MONSTERS, iMinion, 0)
 	get_tr2(0, TR_flFraction, fFraction)
@@ -3145,7 +3207,7 @@ bool:necro_climb_try(iMinion, const Float:vOrigin[3], const Float:vDestination[3
 		return false
 
 	vStart[2] = vOrigin[2] + CLIMB_MIN_WALL_HEIGHT
-	xs_vec_mul_scalar(vDir, CLIMB_WALL_REACH, vEnd)
+	xs_vec_mul_scalar(vDir, necro_wall_reach(iMinion), vEnd)
 	xs_vec_add(vStart, vEnd, vEnd)
 	engfunc(EngFunc_TraceLine, vStart, vEnd, IGNORE_MONSTERS, iMinion, 0)
 	get_tr2(0, TR_flFraction, fFraction)
@@ -3209,7 +3271,7 @@ bool:necro_climb_inner_corner(iMinion, const Float:vOrigin[3], const Float:vTan[
 	new Float:vStart[3], Float:vEnd[3], Float:vNormal[3], Float:fFraction
 	xs_vec_copy(vOrigin, vStart)
 	vStart[2] += 4.0
-	xs_vec_mul_scalar(vTan, CLIMB_WALL_REACH, vEnd)
+	xs_vec_mul_scalar(vTan, necro_wall_reach(iMinion), vEnd)
 	xs_vec_add(vStart, vEnd, vEnd)
 	engfunc(EngFunc_TraceLine, vStart, vEnd, IGNORE_MONSTERS, iMinion, 0)
 	get_tr2(0, TR_flFraction, fFraction)
@@ -3223,7 +3285,7 @@ bool:necro_climb_inner_corner(iMinion, const Float:vOrigin[3], const Float:vTan[
 	vNormal[2] = 0.0
 	xs_vec_normalize(vNormal, vNormal)
 	xs_vec_neg(vNormal, g_vClimbDir[iMinion])
-	g_fClimbWallDist[iMinion] = fFraction * CLIMB_WALL_REACH
+	g_fClimbWallDist[iMinion] = fFraction * necro_wall_reach(iMinion)
 	g_vClimbFace[iMinion] = Float:{0.0, 0.0, 1.0}
 	return true
 }
@@ -3485,11 +3547,11 @@ bool:necro_climb_tick(iMinion, const Float:vDestination[3])
 
 	xs_vec_copy(vOrigin, vStart)
 	vStart[2] += 4.0
-	xs_vec_mul_scalar(g_vClimbDir[iMinion], CLIMB_WALL_REACH, vEnd)
+	xs_vec_mul_scalar(g_vClimbDir[iMinion], necro_wall_reach(iMinion), vEnd)
 	xs_vec_add(vStart, vEnd, vEnd)
 	engfunc(EngFunc_TraceLine, vStart, vEnd, IGNORE_MONSTERS, iMinion, 0)
 	get_tr2(0, TR_flFraction, fFraction)
-	g_fClimbWallDist[iMinion] = fFraction * CLIMB_WALL_REACH
+	g_fClimbWallDist[iMinion] = fFraction * necro_wall_reach(iMinion)
 
 	if (fFraction >= 1.0)
 	{
@@ -3677,7 +3739,7 @@ public npc_TakeDamage(iMinionEnt, iInflictor, iAttacker, Float:fDamage, iDmgBits
 	if (!is_entity_player(iOwner))
 		return HAM_IGNORED
 
-	if (g_bUltraBurrowed[iMinionEnt])
+	if (g_bUltraHidden[iMinionEnt])
 		return HAM_SUPERCEDE
 
 	if (iDmgBits & DMG_NPC_HEAL)
@@ -3974,8 +4036,11 @@ necro_minion_reset_status(iMinion)
 	g_fUltraRageUntil[iMinion] = 0.0
 	g_fUltraRageReadyAt[iMinion] = 0.0
 	g_bUltraBurrowed[iMinion] = false
+	g_bUltraHidden[iMinion] = false
+	g_fUltraBuryDoneAt[iMinion] = 0.0
 	g_fUltraBurrowToggleAt[iMinion] = 0.0
 	g_iUltraBurrowMark[iMinion] = 0
+	g_fUltraWakeUntil[iMinion] = 0.0
 }
 
 necro_precache_sounds(const szSounds[][], iCount)
@@ -4019,7 +4084,10 @@ necro_voice_death(iMinion)
 
 necro_voice_ready(iMinion)
 {
-	engfunc(EngFunc_EmitSound, iMinion, CHAN_VOICE, SOUNDS_HYDRA_READY[random(sizeof SOUNDS_HYDRA_READY)], 1.0, ATTN_NORM, 0, PITCH_NORM)
+	if (get_entvar(iMinion, var_npctype) == 2)
+		engfunc(EngFunc_EmitSound, iMinion, CHAN_VOICE, SOUNDS_HYDRA_READY[random(sizeof SOUNDS_HYDRA_READY)], 1.0, ATTN_NORM, 0, PITCH_NORM)
+	else
+		engfunc(EngFunc_EmitSound, iMinion, CHAN_VOICE, SOUNDS_ULTRALISK_READY[random(sizeof SOUNDS_ULTRALISK_READY)], 1.0, ATTN_NORM, 0, PITCH_NORM)
 }
 
 necro_launch_sound(iMinion)
@@ -4309,12 +4377,13 @@ npc_TurnToTarget(iEnt, Float:vOrigin[3], Float:vTargetOrigin[3])
 bool:necro_wall_high(iEnt, Float:fYaw)
 {
 	new Float:vStart[3], Float:vEnd[3], Float:vNormal[3], Float:fFraction
+	new Float:fNear = necro_probe_dist(iEnt), Float:fFar = necro_probe_dist(iEnt) + 8.0
 	get_entvar(iEnt, var_origin, vStart)
 	vStart[2] += 2.0
 	for (new i = -1; i <= 1; i++)
 	{
-		vEnd[0] = floatcos(fYaw + i * 45.0, degrees) * 30.0 + vStart[0]
-		vEnd[1] = floatsin(fYaw + i * 45.0, degrees) * 30.0 + vStart[1]
+		vEnd[0] = floatcos(fYaw + i * 45.0, degrees) * fFar + vStart[0]
+		vEnd[1] = floatsin(fYaw + i * 45.0, degrees) * fFar + vStart[1]
 		vEnd[2] = vStart[2]
 		engfunc(EngFunc_TraceLine, vStart, vEnd, IGNORE_MONSTERS, iEnt, 0)
 		get_tr2(0, TR_flFraction, fFraction)
@@ -4329,8 +4398,8 @@ bool:necro_wall_high(iEnt, Float:fYaw)
 	vStart[2] += 42.0
 	for (new i = -1; i <= 1; i++)
 	{
-		vEnd[0] = floatcos(fYaw + i * 45.0, degrees) * 22.0 + vStart[0]
-		vEnd[1] = floatsin(fYaw + i * 45.0, degrees) * 22.0 + vStart[1]
+		vEnd[0] = floatcos(fYaw + i * 45.0, degrees) * fNear + vStart[0]
+		vEnd[1] = floatsin(fYaw + i * 45.0, degrees) * fNear + vStart[1]
 		vEnd[2] = vStart[2]
 		engfunc(EngFunc_TraceLine, vStart, vEnd, IGNORE_MONSTERS, iEnt, 0)
 		get_tr2(0, TR_flFraction, fFraction)
@@ -4345,6 +4414,8 @@ npc_Move(ent, Float:fSpeed)
 {
 	static Float:vflVelocity[3]
 	get_entvar(ent,var_velocity,vflVelocity)
+	new Float:fProbe = necro_probe_dist(ent)
+	new Float:fHopSpeed = necro_climb_limited(ent) ? 300.0 : 200.0
 	new Float:fKeepVz = vflVelocity[2]
 
 	static Float:vflAngles[3]
@@ -4361,8 +4432,8 @@ npc_Move(ent, Float:fSpeed)
 	vflVelocity[0] = floatcos(vflAngles[1], degrees) * fSpeed
 	vflVelocity[1] = floatsin(vflAngles[1], degrees) * fSpeed
 
-	vflCheckPos[0] = floatcos(vflAngles[1], degrees) * 22.0 + vOrigin[0]
-	vflCheckPos[1] = floatsin(vflAngles[1], degrees) * 22.0 + vOrigin[1]
+	vflCheckPos[0] = floatcos(vflAngles[1], degrees) * fProbe + vOrigin[0]
+	vflCheckPos[1] = floatsin(vflAngles[1], degrees) * fProbe + vOrigin[1]
 
 	static Float:flFract, tr
 
@@ -4373,13 +4444,13 @@ npc_Move(ent, Float:fSpeed)
 
 	if (flFract < 0.9)
 	{
-		vflVelocity[2] = 200.0
+		vflVelocity[2] = fHopSpeed
 	}
 	else
 	{
 		// check Left
-		vflCheckPos[0] = floatcos(vflAngles[1] - 45.0, degrees) * 22.0 + vOrigin[0]
-		vflCheckPos[1] = floatsin(vflAngles[1] - 45.0, degrees) * 22.0 + vOrigin[1]
+		vflCheckPos[0] = floatcos(vflAngles[1] - 45.0, degrees) * fProbe + vOrigin[0]
+		vflCheckPos[1] = floatsin(vflAngles[1] - 45.0, degrees) * fProbe + vOrigin[1]
 
 		tr = create_tr2()
 		engfunc(EngFunc_TraceLine, vOrigin, vflCheckPos, IGNORE_MONSTERS, ent, tr)
@@ -4388,13 +4459,13 @@ npc_Move(ent, Float:fSpeed)
 
 		if(flFract < 0.9)
 		{
-			vflVelocity[2] = 200.0
+			vflVelocity[2] = fHopSpeed
 		}
 		else
 		{
 			// check Right
-			vflCheckPos[0] = floatcos(vflAngles[1] + 45.0, degrees) * 22.0 + vOrigin[0]
-			vflCheckPos[1] = floatsin(vflAngles[1] + 45.0, degrees) * 22.0 + vOrigin[1]
+			vflCheckPos[0] = floatcos(vflAngles[1] + 45.0, degrees) * fProbe + vOrigin[0]
+			vflCheckPos[1] = floatsin(vflAngles[1] + 45.0, degrees) * fProbe + vOrigin[1]
 
 			tr = create_tr2()
 			engfunc(EngFunc_TraceLine, vOrigin, vflCheckPos, IGNORE_MONSTERS, ent, tr)
@@ -4402,10 +4473,10 @@ npc_Move(ent, Float:fSpeed)
 			free_tr2(tr)
 
 			if (flFract < 0.9)
-				vflVelocity[2] = 200.0
+				vflVelocity[2] = fHopSpeed
 		}
 	}
-	if (vflVelocity[2] == 200.0 && necro_climb_limited(ent) && necro_wall_high(ent, vflAngles[1]))
+	if (vflVelocity[2] == fHopSpeed && necro_climb_limited(ent) && necro_wall_high(ent, vflAngles[1]))
 		vflVelocity[2] = fKeepVz
 
 	set_entvar(ent, var_velocity, vflVelocity)
@@ -4551,8 +4622,7 @@ create_heavy(Float:vOrigin[3], Float:vAngles[3], Float:fHealth, iOwner, bool:bHy
 
 	SetThink(iHeavyEnt, "necro_heavy_think")
 
-	if (bHydra)
-		necro_voice_ready(iHeavyEnt)
+	necro_voice_ready(iHeavyEnt)
 
 	set_member(iHeavyEnt, m_bloodColor, MINION_BLOOD_COLOR)
 
