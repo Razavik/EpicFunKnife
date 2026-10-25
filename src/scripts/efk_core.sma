@@ -479,6 +479,7 @@ forward_capture, forward_uncapture, forward_swap, forward_undarkness, forward_up
 forward_disenergy, forward_preuse_crit,
 forward_apply_damage, forward_reflection_start, forward_reflection_stop, forward_reflection,
 forward_concentblock_timeout, forward_player_options_update, forward_ability1_toggle,
+forward_creature_take_damage,
 
 g_iTotalKnives, g_iTotalItems, g_iTotalMenuItems,
 HookChain:g_pSV_WriteFullClientUpdate, g_szDeathString[32], g_iAssistKiller,
@@ -698,6 +699,8 @@ public plugin_natives()
 
 	register_native("kc_player_get_options", "_21kc_player_get_options")
 	register_native("kc_player_get_caused_damage", "_21kc_player_get_caused_damage")
+
+	register_native("kc_creature_take_damage", "_21kc_creature_take_damage")
 }
 
 public plugin_cfg()
@@ -846,6 +849,7 @@ public plugin_init()
 	forward_concentblock_timeout = CreateMultiForward("efk_concentblock_timeout", ET_IGNORE, FP_CELL)
 	forward_player_options_update = CreateMultiForward("efk_player_options_update", ET_IGNORE, FP_CELL, FP_CELL)
 	forward_ability1_toggle = CreateMultiForward("efk_ability_toggle", ET_STOP, FP_CELL)
+	forward_creature_take_damage = CreateMultiForward("efk_creature_take_damage", ET_STOP, FP_CELL, FP_CELL, FP_FLOAT)
 
 	register_clcmd("efk_menu", "clcmd_show_main_menu")
 	register_clcmd("chooseteam", "clcmd_show_main_menu")
@@ -8904,4 +8908,19 @@ public _21kc_player_get_caused_damage()
 
 	set_array(2, iVictims, sizeof(iVictims))
 	return iDamageSum
+}
+
+public _21kc_creature_take_damage(plugin, num_params)
+{
+	new iCreatureEnt = get_param(1)
+	new iAttacker = get_param(2)
+	new Float:fDamage = get_param_f(3)
+
+	if (is_nullent(iCreatureEnt))
+		return false
+
+	new iRet
+	ExecuteForward(forward_creature_take_damage, iRet, iCreatureEnt, iAttacker, fDamage)
+
+	return iRet == PLUGIN_CONTINUE
 }

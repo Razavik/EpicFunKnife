@@ -7,8 +7,6 @@
 #include <efk_core>
 #include <efk_utils>
 
-native bool:floating_damage_show(iAttacker, iVictim, Float:fDamage)
-
 new const PLUGIN[] = "EFK: Necro Knife"
 
 #define KNIFE_CLASSNAME "weapon_next21_necro"
@@ -3868,7 +3866,7 @@ necro_show_damage(iAttacker, iOwner, iMinion, Float:fDamage)
 		|| Player[iAttacker][PlrTeam] == Player[iOwner][PlrTeam])
 		return
 
-	floating_damage_show(iAttacker, iMinion, fDamage)
+	kc_creature_take_damage(iMinion, iAttacker, fDamage)
 }
 
 minion_play_idle(iMinionEnt, Float:fNextThink=0.1)
