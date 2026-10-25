@@ -391,6 +391,26 @@ forward efk_reflection_end(iPlayer, bool:bIsDeath);
 forward efk_player_options_update(iPlayer, iOptions);
 
 /**
+ * Called before appling damage to a creature entity
+ *
+ * @param 	iCreatureEnt	- Creature entity ID
+ * @param 	iAttacker		- Attacker ID
+ * @param 	fDamage			- Damage
+ * @return					- Specify PLUGIN_HANDLED if you want to block the taking of damage
+ */
+forward forward_creature_take_damage(iCreatureEnt, iAttacker, Float:fDamage);
+
+/**
+ * Apply damage to a creature entity
+ *
+ * @param 	iCreatureEnt	- Creature entity ID
+ * @param 	iAttacker		- Attacker ID
+ * @param 	fDamage			- Damage
+ * @return 					- Call result
+ */
+native bool:kc_creature_take_damage(const iCreatureEnt, const iAttacker, const Float:fDamage);
+
+/**
  * Get the number of registered knives
  *
  * @return					- Number of registered knives
