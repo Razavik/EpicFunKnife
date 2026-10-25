@@ -74,7 +74,7 @@ new const INFO_TARGET[] = "info_target"
 enum _:ViewSeq
 {
 	VIEW_SEQ_IDLE,
-	VIEW_SEQ_SPRINT_ON,
+	VIEW_SEQ_SPRINT_IN,
 	VIEW_SEQ_SPRINT_OUT
 }
 
@@ -217,10 +217,12 @@ public RG_CBasePlayer_PreThink_Pre(iPlayer)
 		{
 			kc_player_set_def_maxspeed(iPlayer, SPEED)
 
-			if (get_user_weapon(iPlayer) == CSW_KNIFE)
+			new iWeapon = get_member(iPlayer, m_pActiveItem)
+			if (!is_nullent(iWeapon) && get_member(iWeapon, m_iId) == CSW_KNIFE)
 			{
 				if (fGameTime - fSprintAnimTime[iPlayer][1] >= 0.5 && Float:get_member(iPlayer, m_flNextAttack) < 0.2)
 				{
+					set_member(iWeapon, m_Weapon_flTimeWeaponIdle, 1.0)
 					kc_player_set_view_anim(iPlayer, VIEW_SEQ_SPRINT_OUT)
 					fSprintAnimTime[iPlayer][1] = fGameTime
 				}
@@ -250,7 +252,10 @@ public RG_CBasePlayer_PreThink_Pre(iPlayer)
 
 			if (fGameTime - fSprintAnimTime[iPlayer][0] >= 0.5)
 			{
-				kc_player_set_view_anim(iPlayer, VIEW_SEQ_SPRINT_ON)
+				new iWeapon = get_member(iPlayer, m_pActiveItem)
+				if (!is_nullent(iWeapon))
+					set_member(iWeapon, m_Weapon_flTimeWeaponIdle, 999.0)
+				kc_player_set_view_anim(iPlayer, VIEW_SEQ_SPRINT_IN)
 				fSprintAnimTime[iPlayer][0] = fGameTime
 			}
 

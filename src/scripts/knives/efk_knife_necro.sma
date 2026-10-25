@@ -1360,6 +1360,8 @@ public npc_TakeDamage(iZombieEnt, iInflictor, iAttacker, Float:fDamage)
 			return HAM_SUPERCEDE
 	}
 
+	kc_creature_take_damage(iZombieEnt, iAttacker, fDamage)
+
 	new Float:vOrigin[3]
 	new Float:fHealth = Float:get_entvar(iZombieEnt, var_health)
 	get_entvar(iZombieEnt, var_origin, vOrigin)
