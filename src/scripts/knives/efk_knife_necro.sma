@@ -432,7 +432,7 @@ new
 	Float:g_fMinionBurnNextTick[MAX_ENTITIES_NUM + 1], g_iMinionIceBlock[MAX_ENTITIES_NUM + 1],
 	Float:g_fMinionNextMoveVoice[MAX_ENTITIES_NUM + 1], Float:g_fMinionHoldUntil[MAX_ENTITIES_NUM + 1], bool:g_bMinionHoldAcid[MAX_ENTITIES_NUM + 1], bool:g_bMinionHoldNoGlow[MAX_ENTITIES_NUM + 1],
 	Float:g_fUltraRageUntil[MAX_ENTITIES_NUM + 1], Float:g_fUltraRageReadyAt[MAX_ENTITIES_NUM + 1], bool:g_bUltraBurrowed[MAX_ENTITIES_NUM + 1], bool:g_bUltraHidden[MAX_ENTITIES_NUM + 1], Float:g_fUltraBuryDoneAt[MAX_ENTITIES_NUM + 1], Float:g_fUltraBurrowToggleAt[MAX_ENTITIES_NUM + 1], g_iUltraBurrowMark[MAX_ENTITIES_NUM + 1], Float:g_fUltraWakeUntil[MAX_ENTITIES_NUM + 1],
-	Float:g_fSpitReadyAt[MAX_ENTITIES_NUM + 1], bool:g_bMinionClimb[MAX_ENTITIES_NUM + 1], Float:g_fClimbWallDist[MAX_ENTITIES_NUM + 1], Float:g_vClimbDir[MAX_ENTITIES_NUM + 1][3], Float:g_vClimbFace[MAX_ENTITIES_NUM + 1][3], bool:g_bThinkHeld, bool:g_bMinionDot, bool:g_bFloatingDamage,
+	Float:g_fSpitReadyAt[MAX_ENTITIES_NUM + 1], bool:g_bMinionClimb[MAX_ENTITIES_NUM + 1], Float:g_fClimbWallDist[MAX_ENTITIES_NUM + 1], Float:g_vClimbDir[MAX_ENTITIES_NUM + 1][3], Float:g_vClimbFace[MAX_ENTITIES_NUM + 1][3], bool:g_bThinkHeld, bool:g_bMinionDot,
 	g_pShockwaveSpr, g_pBloodSpr, g_pBloodSpraySpr, g_pGibs[5], g_pKnifePMdl,
 	g_pRockGibsMdl, g_pSmokeSpr, g_pFlameSpr, g_pPointSpr, g_pPointRedSpr, g_pPointYellowSpr, g_pLaserbeamSpr
 
@@ -521,7 +521,6 @@ public plugin_init()
 {
 	register_plugin(PLUGIN, EFK_VERSION, "Next21 Team")
 	g_trRender = create_tr2()
-	g_bFloatingDamage = bool:LibraryExists("floating_damage", LibType_Library)
 	g_iKnifeId = kc_register_knife(KNIFE_CLASSNAME, KNIFE_MENUDESC, KNIFE_CHATDESC,
 		engfunc(EngFunc_AllocString, MODEL_V_KNIFE), engfunc(EngFunc_AllocString, MODEL_P_KNIFE),
 		g_pKnifePMdl, HP, GRAVITY, SPEED, MINDAMAGE, MAXDAMAGE)
@@ -3862,7 +3861,7 @@ public npc_TakeDamage(iMinionEnt, iInflictor, iAttacker, Float:fDamage, iDmgBits
 
 necro_show_damage(iAttacker, iOwner, iMinion, Float:fDamage)
 {
-	if (!g_bFloatingDamage || !is_entity_player(iAttacker) || !Player[iAttacker][PlrIsAlive]
+	if (!is_entity_player(iAttacker) || !Player[iAttacker][PlrIsAlive]
 		|| Player[iAttacker][PlrTeam] == Player[iOwner][PlrTeam])
 		return
 
