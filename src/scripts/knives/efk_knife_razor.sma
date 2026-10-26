@@ -91,7 +91,10 @@ new const CLASSNAME_SPHERE_SHELL[]	= "next21_razor_sphere_sh"
 #define DEATH_STEAL_MAX_ADDITION	20.0
 #define DEATH_STEAL_MIN_ADDITION	5.0
 
-#define DRIVE_MIN_POWER_SPEED		130.0
+#define DRIVE_MIN_POWER_SPEED		20.0
+#define TRAIL_MIN_POWER_SPEED		130.0
+#define DRIVE_PUNCH_COST			20.0
+#define DRIVE_PUNCH_CHARGE			50.0
 #define DRIVE_HIT_COST				24.0
 #define DRIVE_PUSH_FORCE				350.0
 #define DRIVE_PUSH_LIFT				280.0
@@ -104,6 +107,7 @@ new const CLASSNAME_SPHERE_SHELL[]	= "next21_razor_sphere_sh"
 #define STATUS_COLOR_B				255
 
 new bool:g_bDrivePushPending[MAX_PLAYERS + 1]
+new bool:g_bDrivePunchBoost[MAX_PLAYERS + 1]
 new Float:g_vDrivePush[MAX_PLAYERS + 1][3]
 
 new const DRIVE_MODE_NAMES[][] =
@@ -399,7 +403,7 @@ public RG_CBasePlayer_PreThink_Post(iPlayer)
 		vRunSpeed[2] = 0.0
 
 		if (Player[iPlayer][PlrInPush]
-			|| (kc_player_get_powerspeed(iPlayer) >= DRIVE_MIN_POWER_SPEED && xs_vec_len(vRunSpeed) > 10.0))
+			|| (kc_player_get_powerspeed(iPlayer) >= TRAIL_MIN_POWER_SPEED && xs_vec_len(vRunSpeed) > 10.0))
 		{
 			razor_trail_start(iPlayer)
 		}
@@ -583,12 +587,9 @@ public RG_CBasePlayer_TraceAttack_Pre(iVictim, iAttacker, Float:fDamage, Float:v
 
 	if (kc_player_check_game_flag(iVictim, PLGF_IN_UNABILITY))
 		return HC_CONTINUE
-
 	if (get_tr2(iTraceId, TR_iHitgroup) == HIT_SHIELD)
 		return HC_CONTINUE
 
-	if (~get_entvar(iVictim, var_flags) & FL_ONGROUND)
-		return HC_CONTINUE
 
 	new CaptureType:iCaptureType = kc_player_get_capture(iVictim)
 	if (iCaptureType == CAPTURE_NORMAL || iCaptureType == CAPTURE_STRONG)
@@ -601,7 +602,7 @@ public RG_CBasePlayer_TraceAttack_Pre(iVictim, iAttacker, Float:fDamage, Float:v
 	if (get_distance_f(vVictimOrigin, vAttackerOrigin) > 100)
 		return HC_CONTINUE
 
-	kc_player_set_powerspeed(iAttacker, kc_player_get_powerspeed(iAttacker) - DRIVE_HIT_COST)
+	kc_player_set_powerspeed(iAttacker, floatmax(0.0, kc_player_get_powerspeed(iAttacker) - DRIVE_HIT_COST))
 	Player[iVictim][PlrPushMarkedBy][iAttacker] = true
 
 	new Float:vPush[3]
@@ -973,7 +974,6 @@ public efk_ability(iPlayer, iTarget)
 	Player[iPlayer][PlrStealDelay] = get_gametime() + 0.5
 
 	kc_player_set_game_flag(iPlayer, PLGF_IN_LOCK_POWER_SPEED | PLGF_IN_MARKED_VISIBILITY)
-	kc_player_set_game_flag(iTarget, PLGF_IN_LOCK_POWER_SPEED | PLGF_IN_MARKED_VISIBILITY)
 
 	return PLUGIN_CONTINUE
 }
@@ -1082,6 +1082,12 @@ public efk_ability3(iPlayer)
 	if (!(get_entvar(iPlayer, var_flags) & FL_ONGROUND) && get_entvar(iPlayer, var_movetype) != MOVETYPE_FLY)
 		return PLUGIN_HANDLED
 
+	if (Player[iPlayer][PlrDriveMode] && kc_player_get_powerspeed(iPlayer) >= DRIVE_PUNCH_COST)
+	{
+		kc_player_set_powerspeed(iPlayer, kc_player_get_powerspeed(iPlayer) - DRIVE_PUNCH_COST)
+		g_bDrivePunchBoost[iPlayer] = true
+	}
+
 	kc_player_unfreeze(iPlayer)
 	kc_player_set_bair(iPlayer, FL_BAIR_CLIMB)
 
@@ -1112,6 +1118,17 @@ public efk_ability3(iPlayer)
 	razor_trail_start(iPlayer)
 
 	return PLUGIN_CONTINUE
+}
+
+public efk_ability3_post(iPlayer)
+{
+	if (!g_bDrivePunchBoost[iPlayer])
+		return
+
+	g_bDrivePunchBoost[iPlayer] = false
+
+	if (Player[iPlayer][PlrKnife] == g_iKnifeId)
+		kc_player_set_abil3_charge(iPlayer, DRIVE_PUNCH_CHARGE)
 }
 
 public efk_disenergy(iPlayer)

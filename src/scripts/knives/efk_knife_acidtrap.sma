@@ -16,7 +16,7 @@ new const PLUGIN[] = "EFK: Acidtrap Knife"
 
 #define HP				80.0
 #define GRAVITY			1.0
-#define SPEED			260.0
+#define SPEED			250.0
 #define MINDAMAGE		5.0
 #define MAXDAMAGE		10.0
 
@@ -606,9 +606,15 @@ public fw_PreThink(iPlayer)
 	return HAM_IGNORED
 }
 
-public fw_PlayerKilled(iVictim)
+public fw_PlayerKilled(iVictim, iAttacker)
 {
 	Player[iVictim][PlrIsAlive] = false
+
+	if (iAttacker != iVictim && is_entity_player(iAttacker) && Player[iAttacker][PlrKnife] == g_iKnifeId && Player[iAttacker][PlrIsAlive]
+		&& get_member(iAttacker, m_iTeam) != get_member(iVictim, m_iTeam))
+	{
+		Player[iAttacker][PlrWallPt] = min(100, Player[iAttacker][PlrWallPt] + 15)
+	}
 
 	if (Player[iVictim][PlrKnife] == g_iKnifeId)
 		clear_highlighted_acidtrap(iVictim)
