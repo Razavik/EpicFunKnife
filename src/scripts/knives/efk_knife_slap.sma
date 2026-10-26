@@ -632,6 +632,12 @@ public efk_ability2(iPlayer)
 						set_entvar(iTarget, var_nextthink, get_gametime())
 					}
 				}
+				case IMPULSE_NINJA_SHADOW:
+				{
+					iTargetOwner = get_entvar(iTarget, var_owner)
+					if (is_user_connected(iTargetOwner) && iTeam != get_member(iTargetOwner, m_iTeam))
+						rg_remove_entity(iTarget)
+				}
 				case IMPULSE_ACIDTRAP:
 				{
 					if (iTeam != get_entvar(iTarget, var_skin) + 1)
