@@ -2325,7 +2325,8 @@ public fw_Player_Damage(iVictim, iInflictor, iAttacker, Float:fDamage, iFlags)
 		}
 		else if (!is_nullent(iGroundEnt) && get_entvar(iGroundEnt, var_impulse) == IMPULSE_MINION)
 		{
-			ExecuteHamB(Ham_TakeDamage, iGroundEnt, 0, iGroundEnt, 9000.0, DMG_FALL)
+			if (get_entvar(iGroundEnt, var_skin) + 1 != iVictimTeam)
+				ExecuteHamB(Ham_TakeDamage, iGroundEnt, iVictim, iVictim, fDamage * FALL_DAMAGE, DMG_FALL)
 			fNewDamage = fDamage * FALL_EASING
 			SetHamParamFloat(4, fNewDamage)
 		}
