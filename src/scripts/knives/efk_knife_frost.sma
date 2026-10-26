@@ -1004,15 +1004,6 @@ public ice_clone_touch(iEnt, iOther)
 			ice_clone_remove(iEnt)
 		}
 	}
-	else if (iOther > MaxClients && is_entity(iOther) && (get_entvar(iOther, var_flags) & FL_MONSTER))
-	{
-		new iOwner = get_entvar(iEnt, var_owner)
-		if (get_user_team(iOwner) != get_entvar(iOther, var_skin) + 1)
-		{
-			ExecuteHamB(Ham_TakeDamage, iOther, iEnt, iOwner, 0.0, DMG_FREEZE)
-			ice_clone_remove(iEnt)
-		}
-	}
 }
 
 ice_clone_remove(iEnt)
@@ -1431,8 +1422,8 @@ public efk_ability3(iPlayer)
 	set_entvar(iCloneSkeleton, var_solid, SOLID_TRIGGER)
 	set_entvar(iCloneSkeleton, var_owner, iPlayer)
 	set_entvar(iCloneSkeleton, var_team, get_user_team(iPlayer))
-	set_entvar(iCloneSkeleton, var_rendermode, kRenderNormal)
-	set_entvar(iCloneSkeleton, var_renderamt, 16.0)
+	set_entvar(iCloneSkeleton, var_rendermode, kRenderTransAlpha)
+	set_entvar(iCloneSkeleton, var_renderamt, 0.0)
 	set_entvar(iCloneSkeleton, var_clone_buffed, bBuffed)
 
 	new iBlend[2], iSeq, iPlayerSeq
