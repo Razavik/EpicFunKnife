@@ -13,14 +13,14 @@ new const PLUGIN[] = "EFK: Ninja Knife"
 #define KNIFE_MENUDESC  "KNIFE_NINJA_DESC"
 #define KNIFE_CHATDESC  "KNIFE_NINJA_CHAT"
 
-#define HP				115.0
+#define HP				90.0
 #define GRAVITY			0.75
 #define SPEED			255.0
 #define MINDAMAGE		0.0
 #define MAXDAMAGE		0.0
 
 #define ABIL1_NAME		"Ninja"
-#define ABIL1_CHARGE	6.667
+#define ABIL1_CHARGE	7.143
 
 #define Player[%1][%2]		g_player_data[%1 - 1][%2]
 #define PlayerF[%1][%2]		g_player_data_f[%1 - 1][%2]
@@ -43,8 +43,20 @@ new const MODEL_P_KNIFE[] = "models/next21_efk/p_ninja_knife.mdl"
 #define SOUND_KAMUI			"next21_efk/kamui.wav"
 
 #define CLASSNAME_FAKEPART	"next21_fakepart"
+#define CLASSNAME_SHADOW_CLONE	"next21_ninja_shadow"
+#define CLASSNAME_SHADOW_CLONE_KNIFE	"next21_ninja_shadow_knife"
+#define MODEL_SHADOW_CLONE	"models/player/efk_player_b7/efk_player_b7.mdl"
 
 #define INVISTIME		7.0
+#define SHADOW_CLONE_DISTANCE	100.0
+#define SHADOW_CLONE_RANGE	700.0
+#define SHADOW_CLONE_LIFE	5.0
+#define SHADOW_CLONE_SPREAD_TIME	0.5
+#define SHADOW_CLONE_THINK_INTERVAL	0.02
+#define SHADOW_AIM_RADIUS		48.0
+#define SHADOW_GLOW_UPDATE_INTERVAL	0.1
+#define SHADOW_JUMP_COOLDOWN	0.1
+#define SHADOW_CLONE_RENDER_AMT	128.0
 
 #define MODE_LASTMOVE		0
 #define MODE_FOLLOW		1
@@ -56,23 +68,44 @@ enum _:ViewSeq
 	VIEW_SEQ_IDLE
 }
 
+enum _:NinjaModeType
+{
+	NINJA_MODE_INVISION,
+	NINJA_MODE_KAMUI,
+	NINJA_MODE_SHADOW
+}
+
 new const SZ_INFO_TARGET[]			= "info_target"
+new const NINJA_MODE_NAMES[][] =
+{
+	"Invision",
+	"Kamui",
+	"Shadow Clones"
+}
 
 #define var_fakeowner				var_iuser2
+#define var_shadow_endtime			var_fuser1
+#define var_shadow_spread_starttime	var_fuser2
+#define var_shadow_spread_endtime	var_fuser3
+#define var_shadow_startorigin		var_vuser1
+#define var_shadow_endorigin		var_vuser2
+#define var_shadow_hull			var_iuser3
 
 enum _:Player_Properties
 {
 	bool:IsAlive,
 	Knife,
 	Team,
-	InvisMode,
+	Mode,
 	FakeSeq,
 	FakeMode,
 	FakeSkeleton,
 	FakeShell,
 	FakeKnife,
 	FakeHat,
-	CanSwap
+	CanSwap,
+	ShadowTarget,
+	bool:ShadowUsePressed
 }
 
 enum _:Player_Properties_F
@@ -84,11 +117,14 @@ enum _:Player_Properties_F
 	Float:FakeInvisTimeDelay,
 	Float:FakeRenderDalay,
 	Float:FakeAttackDalay,
-	Float:FakeStepDelay
+	Float:FakeStepDelay,
+	Float:ShadowJumpTime,
+	Float:ShadowGlowUpdateTime
 }
 
 new g_iKnifeId,
 g_player_data[MAX_PLAYERS][Player_Properties], Float:g_player_data_f[32][Player_Properties_F],
+Float:g_vShadowCloneOrigins[MAX_PLAYERS + 1][3][3], bool:g_bShadowClonePositionValid[MAX_PLAYERS + 1][3],
 sprIllusion, g_pKnifeVStr, g_pKnifeInvisVStr, g_pKnifePMdl
 
 public plugin_precache()
@@ -145,6 +181,7 @@ public plugin_init()
 	RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_knife", "fw_PrePrimaryAttack")
 	RegisterHam(Ham_Weapon_SecondaryAttack, "weapon_knife", "fw_PreSecondaryAttack")
 	RegisterHam(Ham_Killed, "player", "fw_PlayerKilled")
+	RegisterHookChain(RG_CSGameRules_CleanUpMap, "RG_CSGameRules_CleanUpMap_Post", true)
 
 	register_impulse(100, "fw_PlayerFlashlight")
 
@@ -155,12 +192,18 @@ public client_putinserver(iPlayer)
 {
 	Player[iPlayer][IsAlive] = false
 	Player[iPlayer][Team] = 0
+	Player[iPlayer][Mode] = NINJA_MODE_INVISION
+	Player[iPlayer][ShadowTarget] = 0
+	Player[iPlayer][ShadowUsePressed] = false
+	PlayerF[iPlayer][ShadowJumpTime] = 0.0
+	PlayerF[iPlayer][ShadowGlowUpdateTime] = 0.0
 }
 
 public client_disconnected(iPlayer)
 {
 	Player[iPlayer][IsAlive] = false
 	Player[iPlayer][Team] = 0
+	shadow_remove_owned(iPlayer)
 
 	if (Player[iPlayer][FakeSkeleton])
 		fakeplayer_think(Player[iPlayer][FakeSkeleton])
@@ -173,6 +216,13 @@ public fw_PlayerSpawn(iPlayer)
 		Player[iPlayer][IsAlive] = true
 		PlayerF[iPlayer][FakeRenderDalay] = 0.0
 		PlayerF[iPlayer][InvisibleTime] = 0.0
+		PlayerF[iPlayer][ShadowJumpTime] = 0.0
+		PlayerF[iPlayer][ShadowGlowUpdateTime] = 0.0
+		Player[iPlayer][ShadowUsePressed] = false
+		shadow_remove_owned(iPlayer)
+
+		if (Player[iPlayer][Knife] == g_iKnifeId)
+			ninja_update_ability_target(iPlayer)
 
 		if (Player[iPlayer][FakeSkeleton])
 			fakeplayer_think(Player[iPlayer][FakeSkeleton])
@@ -192,8 +242,30 @@ public fw_PostThink(iPlayer)
 	if (!Player[iPlayer][IsAlive] || Player[iPlayer][Knife] != g_iKnifeId)
 		return HAM_IGNORED
 
-	static iPlayerSeq, iFakeModeButton, iSwapButton
 	new Float:fGameTime = get_gametime()
+	if (Player[iPlayer][Mode] == NINJA_MODE_SHADOW)
+	{
+		if (fGameTime >= PlayerF[iPlayer][ShadowGlowUpdateTime])
+		{
+			PlayerF[iPlayer][ShadowGlowUpdateTime] = fGameTime + SHADOW_GLOW_UPDATE_INTERVAL
+			shadow_update_aim_glow(iPlayer)
+		}
+
+		new iButtons = get_entvar(iPlayer, var_button)
+		if (!(iButtons & IN_USE))
+			Player[iPlayer][ShadowUsePressed] = false
+		else if (!Player[iPlayer][ShadowUsePressed])
+		{
+			Player[iPlayer][ShadowUsePressed] = true
+			if (fGameTime >= PlayerF[iPlayer][ShadowJumpTime]
+				&& !kc_player_in_silence(iPlayer) && kc_player_get_capture(iPlayer) == CAPTURE_NONE)
+				shadow_jump(iPlayer)
+		}
+
+		return HAM_IGNORED
+	}
+
+	static iPlayerSeq, iFakeModeButton, iSwapButton
 
 	if (fGameTime < kc_player_get_swap(iPlayer))
 	{
@@ -447,7 +519,7 @@ public fw_PrePrimaryAttack(iWeapon)
 	if (Player[iPlayer][Knife] != g_iKnifeId)
 		return HAM_IGNORED
 
-	if (Player[iPlayer][InvisMode] == 1 && PlayerF[iPlayer][InvisibleTime] > 0.0)
+	if (Player[iPlayer][Mode] == NINJA_MODE_KAMUI && PlayerF[iPlayer][InvisibleTime] > 0.0)
 	{
 		kc_player_uninvision(iPlayer)
 		set_member(iWeapon, m_Weapon_flNextPrimaryAttack, 0.35)
@@ -474,12 +546,23 @@ public fw_PreSecondaryAttack(iWeapon)
 	if (Player[iPlayer][Knife] != g_iKnifeId)
 		return HAM_IGNORED
 
-	if (Player[iPlayer][InvisMode] == 1 && PlayerF[iPlayer][InvisibleTime] > 0.0)
+	if (Player[iPlayer][Mode] == NINJA_MODE_KAMUI && PlayerF[iPlayer][InvisibleTime] > 0.0)
 	{
 		kc_player_uninvision(iPlayer)
 		set_member(iWeapon, m_Weapon_flNextPrimaryAttack, 0.35)
 		set_member(iWeapon, m_Weapon_flNextSecondaryAttack, 0.35)
 		return HAM_SUPERCEDE
+	}
+
+	if (Player[iPlayer][Mode] == NINJA_MODE_SHADOW)
+	{
+		new iTarget, iBody
+		new Float:fDistance = get_user_aiming(iPlayer, iTarget, iBody)
+		log_amx("[NinjaShadow] MOUSE2: player=%d mode=%d target=%d distance=%d charge=%d ready=%d silence=%d capture=%d",
+			iPlayer, Player[iPlayer][Mode], iTarget, floatround(fDistance, floatround_floor),
+			floatround(kc_player_get_abil1_charge(iPlayer), floatround_floor), kc_player_is_abil1_ready(iPlayer),
+			kc_player_in_silence(iPlayer), _:kc_player_get_capture(iPlayer))
+		return HAM_IGNORED
 	}
 
 	if (kc_player_in_silence(iPlayer))
@@ -509,6 +592,7 @@ public fw_PlayerKilled(iVictim)
 {
 	Player[iVictim][IsAlive] = false
 	PlayerF[iVictim][FakeRenderDalay] = 0.0
+	shadow_remove_owned(iVictim)
 
 	if (Player[iVictim][FakeSkeleton])
 		fakeplayer_think(Player[iVictim][FakeSkeleton])
@@ -517,6 +601,8 @@ public fw_PlayerKilled(iVictim)
 public efk_player_change_team(iPlayer, iTeam)
 {
 	Player[iPlayer][Team] = iTeam
+	Player[iPlayer][ShadowTarget] = 0
+	shadow_remove_owned(iPlayer)
 }
 
 public fw_FakeDamage(iEnt, iInflictor, iAttacker)
@@ -617,12 +703,34 @@ public fakeplayer_touch(iEnt, iOther)
 
 public fw_PlayerFlashlight(iPlayer)
 {
-	if (Player[iPlayer][Knife] != g_iKnifeId || PlayerF[iPlayer][InvisibleTime] > 0.0)
+	if (Player[iPlayer][Knife] != g_iKnifeId)
 		return PLUGIN_CONTINUE
 
-	Player[iPlayer][InvisMode] = !Player[iPlayer][InvisMode]
+	if (Player[iPlayer][IsAlive])
+		ninja_cycle_mode(iPlayer)
 
 	return PLUGIN_HANDLED
+}
+
+public efk_ability_toggle(iPlayer)
+{
+	return Player[iPlayer][Knife] == g_iKnifeId ? PLUGIN_HANDLED : PLUGIN_CONTINUE
+}
+
+ninja_cycle_mode(iPlayer)
+{
+	if (PlayerF[iPlayer][InvisibleTime] > 0.0)
+		kc_player_uninvision(iPlayer)
+
+	if (Player[iPlayer][FakeSkeleton])
+		fakeplayer_think(Player[iPlayer][FakeSkeleton])
+
+	Player[iPlayer][ShadowUsePressed] = false
+	Player[iPlayer][ShadowTarget] = 0
+	PlayerF[iPlayer][ShadowGlowUpdateTime] = 0.0
+	Player[iPlayer][Mode] = (Player[iPlayer][Mode] + 1) % 3
+	log_amx("[NinjaShadow] mode changed: player=%d mode=%d", iPlayer, Player[iPlayer][Mode])
+	ninja_update_ability_target(iPlayer)
 }
 
 public fw_EmitSound(iEnt, channel, const sample[])
@@ -639,7 +747,7 @@ public efk_status_draw(iPlayer, iSubject, iKnifeId)
 	if (PlayerF[iSubject][InvisibleTime] > 0.0)
 	{
 		set_hudmessage(255, 255, 255, -1.0, -0.30, 0, 0.0, 0.1, 0.1, 0.0, HUDCHANNEL_STATUS)
-		show_hudmessage(iPlayer, "%L", iPlayer, Player[iSubject][InvisMode] == 1 ? "KAMUI_TIMER" : "INVISION_TIMER",
+		show_hudmessage(iPlayer, "%L", iPlayer, Player[iSubject][Mode] == NINJA_MODE_KAMUI ? "KAMUI_TIMER" : "INVISION_TIMER",
 			floatmax(0.0, PlayerF[iSubject][InvisibleTime] - get_gametime()))
 	}
 
@@ -665,7 +773,12 @@ public efk_status_draw(iPlayer, iSubject, iKnifeId)
 	}
 
 	if (!kc_player_in_silence(iSubject))
-		format(szAbilName, charsmax(szAbilName), "%s^nMode: %s (F)", szAbilName, Player[iSubject][InvisMode] == 1 ? "Kamui" : "Invision")
+	{
+		format(szAbilName, charsmax(szAbilName), "%s^nMode: %s (F)", szAbilName,
+			NINJA_MODE_NAMES[Player[iSubject][Mode]])
+		if (Player[iSubject][Mode] == NINJA_MODE_SHADOW)
+			add(szAbilName, charsmax(szAbilName), "^nTeleport to clone (E)")
+	}
 
 	show_hudmessage(iPlayer, szAbilName)
 
@@ -674,8 +787,16 @@ public efk_status_draw(iPlayer, iSubject, iKnifeId)
 
 public efk_change_knife_core_post(iPlayer, iKnifeId)
 {
+	if (Player[iPlayer][Knife] == g_iKnifeId && iKnifeId != g_iKnifeId && PlayerF[iPlayer][InvisibleTime] > 0.0)
+		kc_player_uninvision(iPlayer)
+
 	Player[iPlayer][Knife] = iKnifeId
 	PlayerF[iPlayer][FakeRenderDalay] = 0.0
+
+	if (iKnifeId != g_iKnifeId)
+		shadow_remove_owned(iPlayer)
+	else
+		ninja_update_ability_target(iPlayer)
 
 	if (Player[iPlayer][FakeSkeleton])
 		fakeplayer_think(Player[iPlayer][FakeSkeleton])
@@ -686,7 +807,7 @@ public efk_uninvisible(iPlayer)
 	PlayerF[iPlayer][InvisibleTime] = 0.0
 	engfunc(EngFunc_EmitSound, iPlayer, CHAN_STATIC, SOUND_UNINVIS, 1.0, ATTN_NORM, 0, PITCH_NORM)
 
-	if (Player[iPlayer][InvisMode] == 1)
+	if (Player[iPlayer][Mode] == NINJA_MODE_KAMUI)
 	{
 		kc_player_unset_game_flag(iPlayer, PLGF_IN_UNABILITY)
 		set_entvar(iPlayer, var_solid, SOLID_SLIDEBOX)
@@ -719,6 +840,24 @@ public efk_crosshair_draw_pre(iPlayer, iTarget, &AbilityType:iAbilType, bool:bDi
 
 public efk_ability_pre(iPlayer, iTarget)
 {
+	if (Player[iPlayer][Mode] == NINJA_MODE_SHADOW)
+	{
+		new bool:bTargetValid = is_entity_player(iTarget) && is_user_alive(iTarget) && iTarget != iPlayer
+		new Float:fDistance = bTargetValid ? rg_entity_range(iPlayer, iTarget) : 0.0
+		new bool:bPositionsValid = bTargetValid && fDistance <= SHADOW_CLONE_RANGE
+		if (bPositionsValid)
+			bPositionsValid = shadow_calculate_origins(iPlayer, iTarget)
+
+		log_amx("[NinjaShadow] ability_pre: player=%d target=%d target_valid=%d distance=%d positions_valid=%d",
+			iPlayer, iTarget, bTargetValid, floatround(fDistance, floatround_floor), bPositionsValid)
+
+		if (!bPositionsValid)
+			return PLUGIN_HANDLED
+
+		Player[iPlayer][ShadowTarget] = iTarget
+		return PLUGIN_CONTINUE
+	}
+
 	if (!iTarget)
 		return PLUGIN_CONTINUE
 
@@ -750,7 +889,51 @@ public efk_ability_pre(iPlayer, iTarget)
 
 public efk_ability(iPlayer)
 {
-	if (Player[iPlayer][InvisMode] != 1 && !pev(iPlayer, pev_maxspeed))
+	if (Player[iPlayer][Mode] == NINJA_MODE_SHADOW)
+	{
+		new iTarget = Player[iPlayer][ShadowTarget]
+		new bool:bTargetValid = is_entity_player(iTarget) && is_user_alive(iTarget) && iTarget != iPlayer
+		new Float:fDistance = bTargetValid ? rg_entity_range(iPlayer, iTarget) : 0.0
+		new bool:bPositionsValid = bTargetValid && fDistance <= SHADOW_CLONE_RANGE
+		if (bPositionsValid)
+			bPositionsValid = shadow_calculate_origins(iPlayer, iTarget)
+
+		log_amx("[NinjaShadow] ability: player=%d target=%d target_valid=%d distance=%d positions_valid=%d",
+			iPlayer, iTarget, bTargetValid, floatround(fDistance, floatround_floor), bPositionsValid)
+		if (!bPositionsValid)
+			return PLUGIN_HANDLED
+
+		new iCreated
+		for (new i; i < 3; i++)
+		{
+			if (!g_bShadowClonePositionValid[iPlayer][i])
+				continue
+
+			new iHull = get_entvar(iTarget, var_flags) & FL_DUCKING ? HULL_HEAD : HULL_HUMAN
+			if (!shadow_is_hull_vacant(g_vShadowCloneOrigins[iPlayer][i], iHull, iPlayer))
+			{
+				log_amx("[NinjaShadow] clone skipped: player=%d target=%d index=%d reason=hull_blocked_at_spawn",
+					iPlayer, iTarget, i)
+				continue
+			}
+
+			new iClone = shadow_create_clone(iPlayer, iTarget, g_vShadowCloneOrigins[iPlayer][i])
+			if (!iClone)
+			{
+				log_amx("[NinjaShadow] entity creation failed: player=%d target=%d index=%d", iPlayer, iTarget, i)
+				continue
+			}
+
+			iCreated++
+			log_amx("[NinjaShadow] clone created: player=%d target=%d index=%d ent=%d", iPlayer, iTarget, i, iClone)
+		}
+
+		Player[iPlayer][ShadowTarget] = 0
+		log_amx("[NinjaShadow] clone set complete: player=%d target=%d created=%d", iPlayer, iTarget, iCreated)
+		return iCreated ? PLUGIN_CONTINUE : PLUGIN_HANDLED
+	}
+
+	if (Player[iPlayer][Mode] != NINJA_MODE_KAMUI && !pev(iPlayer, pev_maxspeed))
 		return PLUGIN_HANDLED
 
 	set_pev(iPlayer, pev_viewmodel, g_pKnifeInvisVStr)
@@ -762,7 +945,7 @@ public efk_ability(iPlayer)
 
 	PlayerF[iPlayer][InvisibleTime] = fGameTime + INVISTIME
 
-	if (Player[iPlayer][InvisMode] == 1)
+	if (Player[iPlayer][Mode] == NINJA_MODE_KAMUI)
 	{
 		Player[iPlayer][CanSwap] = 0
 		PlayerF[iPlayer][FakeRenderDalay] = 0.0
@@ -864,6 +1047,422 @@ public efk_ability(iPlayer)
 	Player[iPlayer][CanSwap] = 1
 
 	return PLUGIN_CONTINUE
+}
+
+shadow_jump(iPlayer)
+{
+	if (Player[iPlayer][Mode] != NINJA_MODE_SHADOW)
+		return PLUGIN_HANDLED
+
+	new Float:fGameTime = get_gametime()
+	if (fGameTime < PlayerF[iPlayer][ShadowJumpTime])
+		return PLUGIN_HANDLED
+
+	new iClone = shadow_get_aimed_clone(iPlayer)
+	if (is_nullent(iClone))
+		return PLUGIN_HANDLED
+
+	new Float:vOldOrigin[3], Float:vNewOrigin[3], Float:vVelocity[3], Float:vBaseVelocity[3], Float:vCloneAngles[3]
+	get_entvar(iPlayer, var_origin, vOldOrigin)
+	get_entvar(iClone, var_origin, vNewOrigin)
+	get_entvar(iClone, var_angles, vCloneAngles)
+	get_entvar(iPlayer, var_velocity, vVelocity)
+	get_entvar(iPlayer, var_basevelocity, vBaseVelocity)
+
+	new iHull = get_entvar(iPlayer, var_flags) & FL_DUCKING ? HULL_HEAD : HULL_HUMAN
+	if (!shadow_is_hull_vacant(vNewOrigin, iHull, iPlayer))
+		return PLUGIN_HANDLED
+
+	new bool:bHit = shadow_damage_segment(iPlayer, vOldOrigin, vNewOrigin)
+	engfunc(EngFunc_SetOrigin, iPlayer, vNewOrigin)
+	set_entvar(iPlayer, var_origin, vNewOrigin)
+	set_entvar(iPlayer, var_angles, vCloneAngles)
+	set_entvar(iPlayer, var_v_angle, vCloneAngles)
+	set_entvar(iPlayer, var_fixangle, 1)
+	set_entvar(iPlayer, var_velocity, vVelocity)
+	set_entvar(iPlayer, var_basevelocity, vBaseVelocity)
+
+	rg_set_animation(iPlayer, PLAYER_ATTACK1)
+	engfunc(EngFunc_EmitSound, iPlayer, CHAN_WEAPON,
+		bHit ? SOUND_KNIFE_HIT1 : (random(2) ? SOUND_KNIFE_SLASH1 : SOUND_KNIFE_SLASH2),
+		1.0, ATTN_NORM, 0, PITCH_NORM)
+
+	PlayerF[iPlayer][ShadowJumpTime] = fGameTime + SHADOW_JUMP_COOLDOWN
+	shadow_remove_clone(iClone)
+
+	return PLUGIN_CONTINUE
+}
+
+ninja_update_ability_target(iPlayer)
+{
+	if (Player[iPlayer][Knife] != g_iKnifeId)
+		return
+
+	if (Player[iPlayer][Mode] == NINJA_MODE_SHADOW)
+	{
+		kc_player_set_abil1_type(iPlayer, ABIL_TARGET_PLAYER)
+		kc_player_set_abil1_dist(iPlayer, 0.0, SHADOW_CLONE_RANGE)
+	}
+	else
+	{
+		kc_player_set_abil1_type(iPlayer, ABIL_NORMAL)
+		kc_player_set_abil1_dist(iPlayer)
+	}
+}
+
+bool:shadow_calculate_origins(iPlayer, iTarget)
+{
+	new Float:vOrigin[3], Float:vOwnerOrigin[3], Float:vLookDirection[3]
+	new Float:vAngles[3], Float:vForward[3], Float:vRight[3]
+	get_entvar(iTarget, var_origin, vOrigin)
+	get_entvar(iPlayer, var_origin, vOwnerOrigin)
+	xs_vec_sub(vOrigin, vOwnerOrigin, vLookDirection)
+	vLookDirection[2] = 0.0
+
+	if (xs_vec_len(vLookDirection) < 0.001)
+	{
+		get_entvar(iPlayer, var_v_angle, vAngles)
+		vAngles[0] = 0.0
+		vAngles[2] = 0.0
+	}
+	else
+	{
+		xs_vec_normalize(vLookDirection, vLookDirection)
+		vector_to_angle(vLookDirection, vAngles)
+		vAngles[0] = 0.0
+		vAngles[2] = 0.0
+	}
+
+	angle_vector(vAngles, ANGLEVECTOR_FORWARD, vForward)
+	angle_vector(vAngles, ANGLEVECTOR_RIGHT, vRight)
+
+	new iValidPositions
+	for (new i; i < 3; i++)
+	{
+		g_bShadowClonePositionValid[iPlayer][i] = false
+
+		new Float:vDirection[3], Float:vOffset[3]
+		switch (i)
+		{
+			case 0: xs_vec_copy(vForward, vDirection)
+			case 1: xs_vec_neg(vRight, vDirection)
+			case 2: xs_vec_copy(vRight, vDirection)
+		}
+
+		xs_vec_mul_scalar(vDirection, SHADOW_CLONE_DISTANCE, vOffset)
+		xs_vec_add(vOrigin, vOffset, g_vShadowCloneOrigins[iPlayer][i])
+
+		new Float:vStart[3], Float:vEnd[3], Float:fFraction
+		xs_vec_copy(g_vShadowCloneOrigins[iPlayer][i], vStart)
+		xs_vec_copy(vStart, vEnd)
+		vStart[2] += 48.0
+		vEnd[2] -= 96.0
+
+		new iTrace = create_tr2()
+		engfunc(EngFunc_TraceLine, vStart, vEnd, IGNORE_MONSTERS, iTarget, iTrace)
+		get_tr2(iTrace, TR_flFraction, fFraction)
+		if (fFraction >= 1.0)
+		{
+			log_amx("[NinjaShadow] placement failed: player=%d target=%d index=%d reason=no_floor", iPlayer, iTarget, i)
+			free_tr2(iTrace)
+			continue
+		}
+
+		get_tr2(iTrace, TR_vecEndPos, g_vShadowCloneOrigins[iPlayer][i])
+		free_tr2(iTrace)
+
+		new Float:fFloorDelta = floatabs(g_vShadowCloneOrigins[iPlayer][i][2] - vOrigin[2])
+		if (fFloorDelta > 64.0)
+		{
+			log_amx("[NinjaShadow] placement failed: player=%d target=%d index=%d reason=floor_delta delta=%d",
+				iPlayer, iTarget, i, floatround(fFloorDelta, floatround_floor))
+			continue
+		}
+
+		new Float:vOwnerMins[3]
+		get_entvar(iPlayer, var_mins, vOwnerMins)
+		g_vShadowCloneOrigins[iPlayer][i][2] -= vOwnerMins[2]
+		g_vShadowCloneOrigins[iPlayer][i][2] += 1.0
+		new iHull = get_entvar(iPlayer, var_flags) & FL_DUCKING ? HULL_HEAD : HULL_HUMAN
+		if (!shadow_is_hull_vacant(g_vShadowCloneOrigins[iPlayer][i], iHull, iPlayer))
+		{
+			log_amx("[NinjaShadow] placement failed: player=%d target=%d index=%d reason=hull_blocked",
+				iPlayer, iTarget, i)
+			continue
+		}
+
+		g_bShadowClonePositionValid[iPlayer][i] = true
+		iValidPositions++
+		log_amx("[NinjaShadow] placement OK: player=%d target=%d index=%d origin=(%d,%d,%d)",
+			iPlayer, iTarget, i,
+			floatround(g_vShadowCloneOrigins[iPlayer][i][0], floatround_floor),
+			floatround(g_vShadowCloneOrigins[iPlayer][i][1], floatround_floor),
+			floatround(g_vShadowCloneOrigins[iPlayer][i][2], floatround_floor))
+	}
+
+	return iValidPositions > 0
+}
+
+shadow_create_clone(iOwner, iTarget, const Float:vOrigin[3])
+{
+	new iClone = rg_create_entity(SZ_INFO_TARGET)
+	if (is_nullent(iClone))
+		return NULLENT
+
+	new Float:vAngles[3], Float:vTargetOrigin[3], Float:vStartOrigin[3]
+	new Float:fGameTime = get_gametime()
+	new Float:vTargetMins[3], Float:vOwnerMins[3], Float:vLookDirection[3]
+	get_entvar(iTarget, var_origin, vTargetOrigin)
+	get_entvar(iTarget, var_origin, vStartOrigin)
+	get_entvar(iTarget, var_mins, vTargetMins)
+	get_entvar(iOwner, var_mins, vOwnerMins)
+	vStartOrigin[2] += vTargetMins[2] - vOwnerMins[2] + 1.0
+	xs_vec_sub(vTargetOrigin, vOrigin, vLookDirection)
+	vector_to_angle(vLookDirection, vAngles)
+	vAngles[2] = 0.0
+
+	new iHull = get_entvar(iOwner, var_flags) & FL_DUCKING ? HULL_HEAD : HULL_HUMAN
+	new iSeq = iHull == HULL_HEAD ? 2 : 0
+
+	engfunc(EngFunc_SetModel, iClone, MODEL_SHADOW_CLONE)
+	engfunc(EngFunc_SetOrigin, iClone, vStartOrigin)
+	engfunc(EngFunc_SetSize, iClone, Float:{-16.0, -16.0, -36.0}, Float:{16.0, 16.0, 36.0})
+
+	set_entvar(iClone, var_classname, CLASSNAME_SHADOW_CLONE)
+	set_entvar(iClone, var_impulse, IMPULSE_NINJA_SHADOW)
+	set_entvar(iClone, var_owner, iOwner)
+	set_entvar(iClone, var_team, get_member(iOwner, m_iTeam))
+	set_entvar(iClone, var_origin, vStartOrigin)
+	set_entvar(iClone, var_angles, vAngles)
+	set_entvar(iClone, var_sequence, iSeq)
+	set_entvar(iClone, var_frame, 0.0)
+	set_entvar(iClone, var_framerate, 1.0)
+	set_entvar(iClone, var_animtime, fGameTime)
+	set_entvar(iClone, var_body, get_entvar(iOwner, var_body))
+	set_entvar(iClone, var_skin, get_entvar(iOwner, var_skin))
+	set_entvar(iClone, var_shadow_startorigin, vStartOrigin)
+	set_entvar(iClone, var_shadow_endorigin, vOrigin)
+	set_entvar(iClone, var_shadow_hull, iHull)
+	set_entvar(iClone, var_shadow_spread_starttime, fGameTime)
+	set_entvar(iClone, var_shadow_spread_endtime, fGameTime + SHADOW_CLONE_SPREAD_TIME)
+	set_entvar(iClone, var_movetype, MOVETYPE_NONE)
+	set_entvar(iClone, var_solid, SOLID_NOT)
+	set_entvar(iClone, var_takedamage, DAMAGE_NO)
+	set_entvar(iClone, var_rendermode, kRenderNormal)
+	set_entvar(iClone, var_renderfx, kRenderFxGlowShell)
+	set_entvar(iClone, var_rendercolor, Float:{0.0, 0.0, 0.0})
+	set_entvar(iClone, var_renderamt, SHADOW_CLONE_RENDER_AMT)
+	set_entvar(iClone, var_shadow_endtime, fGameTime + SHADOW_CLONE_LIFE)
+	set_entvar(iClone, var_nextthink, fGameTime + SHADOW_CLONE_THINK_INTERVAL)
+
+	new iCloneKnife = rg_create_entity(SZ_INFO_TARGET)
+	if (!is_nullent(iCloneKnife))
+	{
+		set_entvar(iCloneKnife, var_movetype, MOVETYPE_FOLLOW)
+		set_entvar(iCloneKnife, var_rendermode, kRenderNormal)
+		set_entvar(iCloneKnife, var_aiment, iClone)
+		set_entvar(iCloneKnife, var_classname, CLASSNAME_SHADOW_CLONE_KNIFE)
+		set_entvar(iCloneKnife, var_owner, iOwner)
+		set_entvar(iCloneKnife, var_modelindex, g_pKnifePMdl)
+	}
+
+	SetThink(iClone, "shadow_clone_think")
+	return iClone
+}
+
+public shadow_clone_think(iClone)
+{
+	new Float:fGameTime = get_gametime()
+	new Float:fEndTime = get_entvar(iClone, var_shadow_endtime)
+	if (fGameTime >= fEndTime)
+	{
+		shadow_remove_clone(iClone)
+		return
+	}
+
+	new Float:fSpreadEndTime = get_entvar(iClone, var_shadow_spread_endtime)
+	new Float:vStartOrigin[3], Float:vEndOrigin[3], Float:vOrigin[3]
+	get_entvar(iClone, var_shadow_startorigin, vStartOrigin)
+	get_entvar(iClone, var_shadow_endorigin, vEndOrigin)
+
+	if (fGameTime < fSpreadEndTime)
+	{
+		new Float:fProgress = floatclamp((fGameTime - get_entvar(iClone, var_shadow_spread_starttime))
+			/ SHADOW_CLONE_SPREAD_TIME, 0.0, 1.0)
+		new Float:fInv = 1.0 - fProgress
+		new Float:fEase = 1.0 - fInv * fInv * fInv
+		new Float:vDirection[3], Float:vOffset[3]
+		xs_vec_sub(vEndOrigin, vStartOrigin, vDirection)
+		xs_vec_mul_scalar(vDirection, fEase, vOffset)
+		xs_vec_add(vStartOrigin, vOffset, vOrigin)
+
+		if (!shadow_is_world_hull_vacant(vOrigin, get_entvar(iClone, var_shadow_hull), iClone))
+		{
+			log_amx("[NinjaShadow] clone removed during spread: ent=%d reason=hull_blocked", iClone)
+			shadow_remove_clone(iClone)
+			return
+		}
+
+		engfunc(EngFunc_SetOrigin, iClone, vOrigin)
+		set_entvar(iClone, var_origin, vOrigin)
+		set_entvar(iClone, var_nextthink, floatmin(fGameTime + SHADOW_CLONE_THINK_INTERVAL, fSpreadEndTime))
+		return
+	}
+
+	if (!shadow_is_world_hull_vacant(vEndOrigin, get_entvar(iClone, var_shadow_hull), iClone))
+	{
+		log_amx("[NinjaShadow] clone removed after spread: ent=%d reason=hull_blocked", iClone)
+		shadow_remove_clone(iClone)
+		return
+	}
+
+	engfunc(EngFunc_SetOrigin, iClone, vEndOrigin)
+	set_entvar(iClone, var_origin, vEndOrigin)
+	set_entvar(iClone, var_nextthink, floatmin(fGameTime + 0.1, fEndTime))
+}
+
+shadow_remove_clone(iClone)
+{
+	if (is_nullent(iClone) || get_entvar(iClone, var_impulse) != IMPULSE_NINJA_SHADOW)
+		return
+
+	new iKnife = NULLENT
+	while ((iKnife = rg_find_ent_by_aiment(iKnife, CLASSNAME_SHADOW_CLONE_KNIFE, iClone)))
+		rg_remove_entity(iKnife)
+
+	rg_remove_entity(iClone)
+}
+
+shadow_remove_owned(iOwner)
+{
+	new iClone = NULLENT
+	while ((iClone = rg_find_ent_by_class(iClone, CLASSNAME_SHADOW_CLONE)))
+		if (get_entvar(iClone, var_owner) == iOwner)
+			shadow_remove_clone(iClone)
+}
+
+public RG_CSGameRules_CleanUpMap_Post()
+{
+	new iClone = NULLENT
+	while ((iClone = rg_find_ent_by_class(iClone, CLASSNAME_SHADOW_CLONE)))
+		shadow_remove_clone(iClone)
+}
+
+bool:shadow_is_hull_vacant(const Float:vOrigin[3], iHull, iIgnore)
+{
+	new iTrace = create_tr2()
+	engfunc(EngFunc_TraceHull, vOrigin, vOrigin, DONT_IGNORE_MONSTERS, iHull, iIgnore, iTrace)
+	new bool:bVacant = !get_tr2(iTrace, TR_StartSolid) && !get_tr2(iTrace, TR_AllSolid) && get_tr2(iTrace, TR_InOpen)
+	free_tr2(iTrace)
+	return bVacant
+}
+
+bool:shadow_is_world_hull_vacant(const Float:vOrigin[3], iHull, iIgnore)
+{
+	new iTrace = create_tr2()
+	engfunc(EngFunc_TraceHull, vOrigin, vOrigin, IGNORE_MONSTERS, iHull, iIgnore, iTrace)
+	new bool:bVacant = !get_tr2(iTrace, TR_StartSolid) && !get_tr2(iTrace, TR_AllSolid) && get_tr2(iTrace, TR_InOpen)
+	free_tr2(iTrace)
+	return bVacant
+}
+
+shadow_update_aim_glow(iPlayer)
+{
+	new iClone = shadow_get_aimed_clone(iPlayer)
+	if (is_nullent(iClone))
+		return
+
+	new Float:vOrigin[3]
+	get_entvar(iClone, var_origin, vOrigin)
+	vOrigin[2] += 36.0
+	send_msg_TE_DLIGHT(vOrigin, 48, {255, 255, 255}, 2, 0, MSG_ONE, _, iPlayer)
+}
+
+shadow_get_aimed_clone(iPlayer)
+{
+	new Float:vStart[3], Float:vAngles[3], Float:vForward[3], Float:vViewOfs[3]
+	get_entvar(iPlayer, var_origin, vStart)
+	get_entvar(iPlayer, var_view_ofs, vViewOfs)
+	xs_vec_add(vStart, vViewOfs, vStart)
+	get_entvar(iPlayer, var_v_angle, vAngles)
+	angle_vector(vAngles, ANGLEVECTOR_FORWARD, vForward)
+
+	new iBestClone = NULLENT
+	new Float:fBestDistance = SHADOW_CLONE_RANGE + 1.0
+	new Float:fNow = get_gametime()
+	new iClone = NULLENT
+	while ((iClone = rg_find_ent_by_class(iClone, CLASSNAME_SHADOW_CLONE)))
+	{
+		if (get_entvar(iClone, var_owner) != iPlayer || get_entvar(iClone, var_shadow_endtime) <= fNow
+			|| get_entvar(iClone, var_shadow_spread_endtime) > fNow)
+			continue
+
+		new Float:vCloneOrigin[3], Float:vAimOrigin[3], Float:vOffset[3], Float:vClosest[3]
+		get_entvar(iClone, var_origin, vCloneOrigin)
+		xs_vec_copy(vCloneOrigin, vAimOrigin)
+		vAimOrigin[2] += 36.0
+		xs_vec_sub(vAimOrigin, vStart, vOffset)
+		new Float:fAlong = xs_vec_dot(vOffset, vForward)
+		if (fAlong <= 0.0 || fAlong > SHADOW_CLONE_RANGE || fAlong >= fBestDistance)
+			continue
+
+		xs_vec_mul_scalar(vForward, fAlong, vClosest)
+		xs_vec_add(vStart, vClosest, vClosest)
+		if (get_distance_f(vAimOrigin, vClosest) > SHADOW_AIM_RADIUS)
+			continue
+
+		new iTrace = create_tr2()
+		new Float:fFraction
+		engfunc(EngFunc_TraceLine, vStart, vAimOrigin, IGNORE_MONSTERS, iPlayer, iTrace)
+		get_tr2(iTrace, TR_flFraction, fFraction)
+		free_tr2(iTrace)
+		if (fFraction < 0.98)
+			continue
+
+		fBestDistance = fAlong
+		iBestClone = iClone
+	}
+
+	return iBestClone
+}
+
+bool:shadow_damage_segment(iPlayer, const Float:vStart[3], const Float:vEnd[3])
+{
+	new Float:vSegment[3]
+	xs_vec_sub(vEnd, vStart, vSegment)
+	new Float:fLengthSq = xs_vec_dot(vSegment, vSegment)
+	if (fLengthSq <= 0.0)
+		return false
+
+	new bool:bHit = false
+
+	for (new iTarget = 1; iTarget <= MaxClients; iTarget++)
+	{
+		if (iTarget == iPlayer || !is_user_alive(iTarget))
+			continue
+
+		new Float:vOrigin[3], Float:vOffset[3], Float:vClosest[3]
+		get_entvar(iTarget, var_origin, vOrigin)
+		vOrigin[2] += 36.0
+		xs_vec_sub(vOrigin, vStart, vOffset)
+		new Float:fAlong = floatclamp(xs_vec_dot(vOffset, vSegment) / fLengthSq, 0.0, 1.0)
+		xs_vec_mul_scalar(vSegment, fAlong, vClosest)
+		xs_vec_add(vStart, vClosest, vClosest)
+		if (get_distance_f(vOrigin, vClosest) > 48.0)
+			continue
+
+		set_member(iTarget, m_LastHitGroup, HIT_GENERIC)
+		new iDamageAttacker = get_member(iTarget, m_iTeam) == get_member(iPlayer, m_iTeam) ? 0 : iPlayer
+		ExecuteHamB(Ham_TakeDamage, iTarget, iPlayer, iDamageAttacker, 5.0, DMG_GENERIC)
+		bHit = true
+
+		if (!is_user_alive(iTarget))
+			continue
+
+		kc_player_slow(iTarget, 0.1, 0.5)
+	}
+
+	return bHit
 }
 
 set_fake_params(iOwner, iFakeSkeleton)
