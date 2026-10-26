@@ -780,7 +780,7 @@ public icicle_touch(iIcicleEnt, iOther)
 				if (get_user_team(iOwner) != get_entvar(iOther, var_skin) + 1)
 				{
 					new Float:fDamage = icicle_get_damage(iIcicleEnt)
-					ExecuteHamB(Ham_TakeDamage, iOther, iIcicleEnt, iOwner, fDamage, DMG_FREEZE)
+					ExecuteHamB(Ham_TakeDamage, iOther, iIcicleEnt, iOwner, fDamage, get_entvar(iIcicleEnt, var_icicle_buffed) ? DMG_FREEZE : DMG_GENERIC)
 
 					engfunc(EngFunc_EmitSound, iOther, CHAN_WEAPON, SOUND_ICICLE_DAMAGE, 1.0, ATTN_NORM, 0, PITCH_NORM)
 					rg_remove_entity(iIcicleEnt)
