@@ -93,8 +93,8 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 
 #define HIT_PLAYER_DAMAGE		10.0
 #define HIT_PLAYER_KNOCKBACK	900.0
-#define HAMMER_ZOMBIE_PASS_RADIUS	128.0
-#define HAMMER_ZOMBIE_HIT_COOLDOWN	0.5
+#define HAMMER_MINION_PASS_RADIUS	128.0
+#define HAMMER_MINION_HIT_COOLDOWN	0.5
 
 #define VIEW_SEQ_STAB	4
 #define VIEW_SEQ_THROW	8
@@ -172,8 +172,8 @@ new
 	g_iKnifeId, g_ePlayerData[MAX_PLAYERS][PlayerData],
 	g_pBallSmokeSpr,
 	g_pKnifePMdl, g_pKnifeVStr, g_pKnifePStr, g_pRockGibsMdl, g_pLightningSpr,
-	Float:g_fHammerZombieHitUntil[2048 + 1],
-	g_iHammerPassZombies[16],
+	Float:g_fHammerMinionHitUntil[2048 + 1],
+	g_iHammerPassMinions[16],
 	g_iHammerPassCount,
 	bool:g_bHammerThrowHit[MAX_PLAYERS + 1][MAX_PLAYERS + 1],
 	bool:g_bHammerReturnHit[MAX_PLAYERS + 1][MAX_PLAYERS + 1],
@@ -1060,7 +1060,7 @@ public hammer_touch(iHammerEnt, iOther)
 		}
 		case IMPULSE_MINION:
 		{
-			hammer_hit_zombie(iHammerEnt, iOwner, iOther)
+			hammer_hit_minion(iHammerEnt, iOwner, iOther)
 			return HC_CONTINUE
 		}
 	}
@@ -1071,58 +1071,58 @@ public hammer_touch(iHammerEnt, iOther)
 	return HC_CONTINUE
 }
 
-hammer_hit_zombie(iHammerEnt, iOwner, iZombie)
+hammer_hit_minion(iHammerEnt, iOwner, iMinion)
 {
-	if (get_entvar(iZombie, var_skin) + 1 == get_user_team(iOwner))
+	if (get_entvar(iMinion, var_skin) + 1 == get_user_team(iOwner))
 		return
 
 	new Float:fGameTime = get_gametime()
-	if (fGameTime < g_fHammerZombieHitUntil[iZombie])
+	if (fGameTime < g_fHammerMinionHitUntil[iMinion])
 		return
 
-	g_fHammerZombieHitUntil[iZombie] = fGameTime + HAMMER_ZOMBIE_HIT_COOLDOWN
+	g_fHammerMinionHitUntil[iMinion] = fGameTime + HAMMER_MINION_HIT_COOLDOWN
 
 	new Float:vVelocity[3]
 	get_entvar(iHammerEnt, var_velocity, vVelocity)
 	xs_vec_normalize(vVelocity, vVelocity)
 	xs_vec_mul_scalar(vVelocity, HIT_PLAYER_KNOCKBACK, vVelocity)
 	vVelocity[2] = 250.0
-	set_entvar(iZombie, var_velocity, vVelocity)
+	set_entvar(iMinion, var_velocity, vVelocity)
 
-	ExecuteHamB(Ham_TakeDamage, iZombie, iHammerEnt, iOwner, HIT_PLAYER_DAMAGE, DMG_CLUB)
+	ExecuteHamB(Ham_TakeDamage, iMinion, iHammerEnt, iOwner, HIT_PLAYER_DAMAGE, DMG_CLUB)
 	hammer_emit_hit_sound(iHammerEnt)
 }
 
-hammer_pass_zombies(iHammerEnt, bool:bBypassSolid)
+hammer_pass_minions(iHammerEnt, bool:bBypassSolid)
 {
 	new Float:vOrigin[3]
 	get_entvar(iHammerEnt, var_origin, vOrigin)
 
 	new iOwner = get_entvar(iHammerEnt, var_owner)
-	new iZombie = -1
-	while ((iZombie = engfunc(EngFunc_FindEntityInSphere, iZombie, vOrigin, HAMMER_ZOMBIE_PASS_RADIUS)) > 0)
+	new iMinion = -1
+	while ((iMinion = engfunc(EngFunc_FindEntityInSphere, iMinion, vOrigin, HAMMER_MINION_PASS_RADIUS)) > 0)
 	{
-		if (get_entvar(iZombie, var_impulse) != IMPULSE_MINION || (get_entvar(iZombie, var_flags) & FL_KILLME))
+		if (get_entvar(iMinion, var_impulse) != IMPULSE_MINION || (get_entvar(iMinion, var_flags) & FL_KILLME))
 			continue
 
 		if (bBypassSolid)
 		{
-			if (get_entvar(iZombie, var_solid) == SOLID_NOT || g_iHammerPassCount >= sizeof g_iHammerPassZombies)
+			if (get_entvar(iMinion, var_solid) == SOLID_NOT || g_iHammerPassCount >= sizeof g_iHammerPassMinions)
 				continue
 
-			g_iHammerPassZombies[g_iHammerPassCount++] = iZombie
-			set_entvar(iZombie, var_solid, SOLID_NOT)
+			g_iHammerPassMinions[g_iHammerPassCount++] = iMinion
+			set_entvar(iMinion, var_solid, SOLID_NOT)
 		}
 
-		new Float:vZombieOrigin[3], Float:vMins[3], Float:vMaxs[3]
-		get_entvar(iZombie, var_origin, vZombieOrigin)
-		get_entvar(iZombie, var_mins, vMins)
-		get_entvar(iZombie, var_maxs, vMaxs)
+		new Float:vMinionOrigin[3], Float:vMins[3], Float:vMaxs[3]
+		get_entvar(iMinion, var_origin, vMinionOrigin)
+		get_entvar(iMinion, var_mins, vMins)
+		get_entvar(iMinion, var_maxs, vMaxs)
 
 		new bool:bOverlap = true
 		for (new i; i < 3; i++)
 		{
-			if (vOrigin[i] + 16.0 < vZombieOrigin[i] + vMins[i] || vOrigin[i] - 16.0 > vZombieOrigin[i] + vMaxs[i])
+			if (vOrigin[i] + 16.0 < vMinionOrigin[i] + vMins[i] || vOrigin[i] - 16.0 > vMinionOrigin[i] + vMaxs[i])
 			{
 				bOverlap = false
 				break
@@ -1130,7 +1130,7 @@ hammer_pass_zombies(iHammerEnt, bool:bBypassSolid)
 		}
 
 		if (bOverlap)
-			hammer_hit_zombie(iHammerEnt, iOwner, iZombie)
+			hammer_hit_minion(iHammerEnt, iOwner, iMinion)
 	}
 }
 
@@ -1138,9 +1138,9 @@ public fw_StartFrame()
 {
 	for (new i; i < g_iHammerPassCount; i++)
 	{
-		new iZombie = g_iHammerPassZombies[i]
-		if (is_entity(iZombie) && !(get_entvar(iZombie, var_flags) & FL_KILLME) && get_entvar(iZombie, var_health) > 0.0)
-			set_entvar(iZombie, var_solid, SOLID_BBOX)
+		new iMinion = g_iHammerPassMinions[i]
+		if (is_entity(iMinion) && !(get_entvar(iMinion, var_flags) & FL_KILLME) && get_entvar(iMinion, var_health) > 0.0)
+			set_entvar(iMinion, var_solid, SOLID_BBOX)
 	}
 
 	g_iHammerPassCount = 0
@@ -1173,7 +1173,7 @@ public hammer_think(iHammerEnt)
 	}
 
 	if (get_entvar(iHammerEnt, var_movetype) != MOVETYPE_NONE)
-		hammer_pass_zombies(iHammerEnt, get_entvar(iHammerEnt, var_movetype) == MOVETYPE_BOUNCEMISSILE)
+		hammer_pass_minions(iHammerEnt, get_entvar(iHammerEnt, var_movetype) == MOVETYPE_BOUNCEMISSILE)
 
 	if (get_entvar(iHammerEnt, var_movetype) != MOVETYPE_NONE)
 	{
@@ -1490,21 +1490,21 @@ hammer_impact_knockback(iOwner, const Float:vOrigin[3])
 		kc_player_slow(iTarget, IMPACT_SLOW_MUL, IMPACT_SLOW_TIME)
 	}
 
-	new iZombie = -1
-	while ((iZombie = engfunc(EngFunc_FindEntityInSphere, iZombie, vOrigin, IMPACT_RADIUS)) > 0)
+	new iMinion = -1
+	while ((iMinion = engfunc(EngFunc_FindEntityInSphere, iMinion, vOrigin, IMPACT_RADIUS)) > 0)
 	{
-		if (get_entvar(iZombie, var_impulse) != IMPULSE_MINION || (get_entvar(iZombie, var_flags) & FL_KILLME)
-			|| get_entvar(iZombie, var_skin) + 1 == iTeam)
+		if (get_entvar(iMinion, var_impulse) != IMPULSE_MINION || (get_entvar(iMinion, var_flags) & FL_KILLME)
+			|| get_entvar(iMinion, var_skin) + 1 == iTeam)
 			continue
 
-		get_entvar(iZombie, var_origin, vTargetOrigin)
+		get_entvar(iMinion, var_origin, vTargetOrigin)
 		xs_vec_sub(vTargetOrigin, vOrigin, vTargetVelocity)
 		xs_vec_normalize(vTargetVelocity, vTargetVelocity)
 		xs_vec_mul_scalar(vTargetVelocity, IMPACT_KNOCKBACK, vTargetVelocity)
 		vTargetVelocity[2] = 250.0
 
-		set_entvar(iZombie, var_flags, get_entvar(iZombie, var_flags) & ~FL_ONGROUND)
-		set_entvar(iZombie, var_velocity, vTargetVelocity)
+		set_entvar(iMinion, var_flags, get_entvar(iMinion, var_flags) & ~FL_ONGROUND)
+		set_entvar(iMinion, var_velocity, vTargetVelocity)
 	}
 }
 
