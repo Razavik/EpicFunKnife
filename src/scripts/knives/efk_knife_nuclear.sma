@@ -507,13 +507,16 @@ public efk_change_knife_core_post(iPlayer, iKnifeId)
 		remove_task(TASK_UNABILITY + iPlayer)
 	}
 
-	if (Player[iPlayer][PlrKnife] == g_iKnifeId && iKnifeId != g_iKnifeId)
+	new bool:bLeftNuclear = Player[iPlayer][PlrKnife] == g_iKnifeId && iKnifeId != g_iKnifeId
+
+	Player[iPlayer][PlrKnife] = iKnifeId
+
+	if (bLeftNuclear)
 	{
 		hammer_cleanup(iPlayer)
 		hammer_cancel_windup(iPlayer)
 	}
 
-	Player[iPlayer][PlrKnife] = iKnifeId
 }
 
 hammer_glow_color(iPlayer, &r, &g, &b)
