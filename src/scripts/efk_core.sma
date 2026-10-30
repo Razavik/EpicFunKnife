@@ -721,7 +721,6 @@ public plugin_precache()
 	precache_generic("sprites/next21_knife_v2/hud/hud_knives_0.spr")
 	precache_generic("sprites/next21_knife_v2/hud/hud_knives_1u2.spr")
 	precache_generic("sprites/next21_knife_v2/hud/hud_knives_2s.spr")
-	precache_generic("sprites/next21_knife_v2/hud/hud_knives_3.spr")
 	precache_generic("sprites/next21_knife_v2/hud/hud_knives_3u2.spr")
 	precache_generic("sprites/next21_efk/hud_nades_.spr")
 
