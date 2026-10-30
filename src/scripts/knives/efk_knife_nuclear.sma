@@ -11,7 +11,7 @@
 
 new const PLUGIN[] = "EFK: Nuclear Knife"
 
-#define KNIFE_CLASSNAME "weapon_next21_nuclear"
+#define KNIFE_CLASSNAME "weapon_next21_nuclear_r02"
 #define KNIFE_MENUDESC  "KNIFE_NUCLEAR_DESC"
 #define KNIFE_CHATDESC  "KNIFE_NUCLEAR_CHAT"
 
@@ -114,7 +114,7 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define HAMMER_THROW_DELAY	0.1
 
 new const MODEL_V_KNIFE[]		= "models/next21_efk/v_nuclear_knife_b03.mdl"
-new const MODEL_P_KNIFE[]		= "models/next21_efk/p_nuclear_knife_a02.mdl"
+new const MODEL_P_KNIFE[]		= "models/next21_efk/p_nuclear_knife_b03.mdl"
 
 new const ANIM_EXT_HAMMER_STR[]	= "hammer"
 new const ANIM_EXT_NO_HAMMER[]	= "claws"

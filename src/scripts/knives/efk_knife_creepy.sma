@@ -10,7 +10,7 @@
 
 new const PLUGIN[] = "EFK: Creepy Knife"
 
-#define KNIFE_CLASSNAME "weapon_next21_creepy"
+#define KNIFE_CLASSNAME "weapon_next21_creepy_r02"
 #define KNIFE_MENUDESC  "KNIFE_CREEPY_DESC"
 #define KNIFE_CHATDESC  "KNIFE_CREEPY_CHAT"
 
@@ -170,7 +170,7 @@ public plugin_precache()
 	engfunc(EngFunc_PrecacheSound, SOUND_KNIFE_SLASH2)
 	engfunc(EngFunc_PrecacheSound, SOUND_KNIFE_STAB)
 
-	engfunc(EngFunc_PrecacheGeneric, "sprites/weapon_next21_creepy.txt")
+	precache_generic(fmt("sprites/%s.txt", KNIFE_CLASSNAME))
 
 	engfunc(EngFunc_PrecacheSound, SOUND_IRON_MAIDEN)
 	engfunc(EngFunc_PrecacheSound, SOUND_SHADOWJUMP)
