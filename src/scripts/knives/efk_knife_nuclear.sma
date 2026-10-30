@@ -96,9 +96,6 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define HAMMER_ZOMBIE_PASS_RADIUS	128.0
 #define HAMMER_ZOMBIE_HIT_COOLDOWN	0.5
 
-#define VIEW_SEQ_STAB	4
-#define VIEW_SEQ_THROW	8
-#define VIEW_SEQ_DRAW		3
 #define HAMMER_WINDUP_TIME	0.3
 
 #define TASK_HAMMER_THROW	36100
@@ -139,6 +136,18 @@ new const SOUND_HAMMER_LOOP[]	= "next21_efk/nuclear_hammer_loop_b02.wav"
 new const SOUND_HAMMER_HITWALL[]	= "next21_efk/nuclear_hammer_hitwall.wav"
 
 #define TASK_UNABILITY		36000
+
+enum _:ViewSeq
+{
+	VIEW_SEQ_IDLE,
+	VIEW_SEQ_BLANK,
+	VIEW_SEQ_THROW,
+	VIEW_SEQ_DRAW,
+	VIEW_SEQ_STAB,
+	VIEW_SEQ_STABMISS,
+	VIEW_SEQ_MIDSLASH1,
+	VIEW_SEQ_MIDSLASH2
+}
 
 enum _:PlayerData
 {
