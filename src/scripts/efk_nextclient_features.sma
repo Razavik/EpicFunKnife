@@ -5,7 +5,7 @@
 
 new const PLUGIN[] = "EFK: Next Client Features"
 
-new const DEATHMSG_KNIFE_ICONS[] = "sprites/next21_efk/ncl/deathmsg_wpns_b02.spr"
+new const DEATHMSG_KNIFE_ICONS[] = "sprites/next21_efk/ncl/deathmsg_wpns_b03.spr"
 
 new const DEATHMSG_FRAMES_MAP[][] =
 {

@@ -10,7 +10,7 @@
 
 new const PLUGIN[] = "EFK: Nuclear Knife"
 
-#define KNIFE_CLASSNAME "weapon_next21_nuclear"
+#define KNIFE_CLASSNAME "weapon_next21_nuclear_r02"
 #define KNIFE_MENUDESC  "KNIFE_NUCLEAR_DESC"
 #define KNIFE_CHATDESC  "KNIFE_NUCLEAR_CHAT"
 
@@ -41,8 +41,8 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define VELOCITY_BACK		2000.0
 #define BURN_CYCLES			3
 
-new const MODEL_V_KNIFE[]		= "models/next21_efk/v_nuclear_knife_b02.mdl"
-new const MODEL_P_KNIFE[]		= "models/next21_efk/p_nuclear_knife_a.mdl"
+new const MODEL_V_KNIFE[]		= "models/next21_efk/v_nuclear_knife_b03.mdl"
+new const MODEL_P_KNIFE[]		= "models/next21_efk/p_nuclear_knife_b03.mdl"
 
 new const SOUND_KNIFE_DEPLOY[]	= "next21_efk/nuclear_knife_deploy.wav"
 new const SOUND_KNIFE_HIT1[]	= "next21_efk/nuclear_knife_hit1.wav"
