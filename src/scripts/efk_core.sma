@@ -718,7 +718,6 @@ public plugin_precache()
 	precache_generic(SPRITE_AIM_TIME)
 	precache_generic(SPRITE_AIM_HELP)
 
-	precache_generic("sprites/next21_knife_v2/hud/hud_items_0[2].spr")
 	precache_generic("sprites/next21_knife_v2/hud/hud_knives_0.spr")
 	precache_generic("sprites/next21_knife_v2/hud/hud_knives_1.spr")
 	precache_generic("sprites/next21_knife_v2/hud/hud_knives_2.spr")
