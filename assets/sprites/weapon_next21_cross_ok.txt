@@ -1,0 +1,3 @@
+2
+autoaim			640 next21_knife_v2/chair/n21_hud_ok	0	0	256	256
+crosshair		640 next21_knife_v2/chair/n21_hud_ok	0	0	256	256

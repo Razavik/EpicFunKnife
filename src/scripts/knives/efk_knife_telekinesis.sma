@@ -9,7 +9,7 @@
 
 new const PLUGIN[] = "EFK: Telekinesis Knife"
 
-#define KNIFE_CLASSNAME "weapon_next21_telekinesis"
+#define KNIFE_CLASSNAME "weapon_next21_telekinesis_r02"
 #define KNIFE_MENUDESC  "KNIFE_TELEKINESIS_DESC"
 #define KNIFE_CHATDESC  "KNIFE_TELEKINESIS_CHAT"
 

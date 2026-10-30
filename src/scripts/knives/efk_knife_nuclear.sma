@@ -11,7 +11,7 @@
 
 new const PLUGIN[] = "EFK: Nuclear Knife"
 
-#define KNIFE_CLASSNAME "weapon_next21_nuclear"
+#define KNIFE_CLASSNAME "weapon_next21_nuclear_r02"
 #define KNIFE_MENUDESC  "KNIFE_NUCLEAR_DESC"
 #define KNIFE_CHATDESC  "KNIFE_NUCLEAR_CHAT"
 
@@ -114,7 +114,7 @@ new const PLUGIN[] = "EFK: Nuclear Knife"
 #define HAMMER_THROW_DELAY	0.1
 
 new const MODEL_V_KNIFE[]		= "models/next21_efk/v_nuclear_knife_b03.mdl"
-new const MODEL_P_KNIFE[]		= "models/next21_efk/p_nuclear_knife_a02.mdl"
+new const MODEL_P_KNIFE[]		= "models/next21_efk/p_nuclear_knife_b03.mdl"
 
 new const ANIM_EXT_HAMMER_STR[]	= "hammer"
 new const ANIM_EXT_NO_HAMMER[]	= "claws"
@@ -122,7 +122,7 @@ new const ANIM_EXT_NO_HAMMER[]	= "claws"
 new const SZ_INFO_TARGET[]		= "info_target"
 new const COFFIN_CLASSNAME[]	= "next21_coffin"
 
-new const MODEL_HAMMER[]		= "models/next21_efk/hammer_b02.mdl"
+new const MODEL_HAMMER[]		= "models/next21_efk/nuke_sledge_b01.mdl"
 
 new const SOUND_KNIFE_DEPLOY[]	= "next21_efk/nuclear_knife_deploy.wav"
 new const SOUND_KNIFE_HIT1[]	= "next21_efk/nuclear_knife_hit1.wav"
