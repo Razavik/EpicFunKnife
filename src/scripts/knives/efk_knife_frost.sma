@@ -944,6 +944,8 @@ public ice_clone_think(iCloneEnt)
 			set_entvar(iIcicleEnt, var_icicle_spawntime, get_gametime())
 			set_entvar(iIcicleEnt, var_icicle_rangemode, IRM_TRACE)
 			set_entvar(iIcicleEnt, var_icicle_strong, true)
+
+			// Prevent tracing of oneself
 			set_entvar(iCloneEnt, var_owner, 0)
 
 			icicle_fire_trace(iIcicleEnt, iOwner, vIcicleOrigin, vDirection, 8192.0)

@@ -82,6 +82,8 @@ new const MODELS_SMOKE[][] =
 
 #define DETONATE_AIM_RADIUS		96.0
 
+#define WALLRUN_CHARGE_REWARD	15
+
 #define HIGHLIGHT_MIN_DOT 			0.95
 #define HIGHLIGHT_UPDATE_TIME 		0.2
 
@@ -222,7 +224,7 @@ public plugin_init()
 	RegisterHookChain(RG_CSGameRules_CleanUpMap, "RG_CSGameRules_CleanUpMap_Post", true)
 	RegisterHookChain(RG_CBasePlayer_Spawn, "RG_CBasePlayer_Spawn_Post", true)
 	RegisterHam(Ham_Player_PreThink, "player", "fw_PreThink")
-	RegisterHam(Ham_Killed, "player", "fw_PlayerKilled", 1)
+	RegisterHookChain(RG_CBasePlayer_Killed, "RG_CBasePlayer_Killed_Post", true)
 
 	register_event("CurWeapon", "event_CurWeapon", "be", "1=1")
 
@@ -606,14 +608,14 @@ public fw_PreThink(iPlayer)
 	return HAM_IGNORED
 }
 
-public fw_PlayerKilled(iVictim, iAttacker)
+public RG_CBasePlayer_Killed_Post(iVictim, iAttacker)
 {
 	Player[iVictim][PlrIsAlive] = false
 
 	if (iAttacker != iVictim && is_entity_player(iAttacker) && Player[iAttacker][PlrKnife] == g_iKnifeId && Player[iAttacker][PlrIsAlive]
 		&& get_member(iAttacker, m_iTeam) != get_member(iVictim, m_iTeam))
 	{
-		Player[iAttacker][PlrWallPt] = min(100, Player[iAttacker][PlrWallPt] + 15)
+		Player[iAttacker][PlrWallPt] = min(100, Player[iAttacker][PlrWallPt] + WALLRUN_CHARGE_REWARD)
 	}
 
 	if (Player[iVictim][PlrKnife] == g_iKnifeId)
