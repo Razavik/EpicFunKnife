@@ -98,7 +98,7 @@ new const MODEL_HEALTH_BAR[]		= "sprites/next21_efk/lifebar_def.spr"
 
 new const MODEL_BLIND[]				= "models/next21_efk/blind_eff_a01.mdl"
 
-new const SPRITE_KNIFE_ICON[]		= "sprites/next21_efk/ncl/hud_knife.spr"
+new const SPRITE_KNIFE_ICON[]		= "sprites/next21_efk/ncl/hud_knife_b02.spr"
 
 new const CAMERA_MODEL[]			= "models/rpgrocket.mdl"
 
@@ -718,12 +718,9 @@ public plugin_precache()
 	precache_generic(SPRITE_AIM_TIME)
 	precache_generic(SPRITE_AIM_HELP)
 
-	precache_generic("sprites/next21_knife_v2/hud/hud_items_0[2].spr")
 	precache_generic("sprites/next21_knife_v2/hud/hud_knives_0.spr")
-	precache_generic("sprites/next21_knife_v2/hud/hud_knives_1.spr")
-	precache_generic("sprites/next21_knife_v2/hud/hud_knives_2.spr")
+	precache_generic("sprites/next21_knife_v2/hud/hud_knives_1u2.spr")
 	precache_generic("sprites/next21_knife_v2/hud/hud_knives_2s.spr")
-	precache_generic("sprites/next21_knife_v2/hud/hud_knives_3.spr")
 	precache_generic("sprites/next21_knife_v2/hud/hud_knives_3u2.spr")
 	precache_generic("sprites/next21_efk/hud_nades_.spr")
 

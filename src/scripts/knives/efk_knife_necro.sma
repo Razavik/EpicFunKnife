@@ -9,7 +9,7 @@
 
 new const PLUGIN[] = "EFK: Necro Knife"
 
-#define KNIFE_CLASSNAME "weapon_next21_necro"
+#define KNIFE_CLASSNAME "weapon_next21_necro_r02"
 #define KNIFE_MENUDESC  "KNIFE_NECRO_DESC"
 #define KNIFE_CHATDESC  "KNIFE_NECRO_CHAT"
 
