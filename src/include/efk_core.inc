@@ -425,6 +425,15 @@ native bool:kc_silence(const iTeam, const Float:fTime);
 native bool:kc_item_register_enable_handler(const iItemId, const szCallback[]);
 
 /**
+ * Find a registered item by its menu description key (the szMenuText passed to kc_register_item).
+ * Items are registered in plugin_init, so call it in plugin_cfg or later
+ *
+ * @param 	szDescription	- Item description key, e.g. "ITEM_REGENERATION"
+ * @return					- Item ID if found, otherwise -1
+ */
+native kc_find_item(const szDescription[]);
+
+/**
  * Get knife/first ability name
  *
  * @param	iKnifeId		- Knife ID
@@ -1360,6 +1369,14 @@ native bool:kc_player_in_silence(const iPlayer);
 native kc_player_slow(const iPlayer, const Float:fSlow, const Float:fSlowTime);
 
 /**
+ * Get the player's view action
+ *
+ * @param 	iPlayer			- Player ID
+ * @return					- View action ID or -1
+ */
+native kc_player_get_view_action(const iPlayer);
+
+/**
  * Play first-person animation for the player
  *
  * @param 	iPlayer			- Player ID
@@ -1513,6 +1530,14 @@ native kc_register_item(const szMenuText[], const szChatText[], const szGiveCall
  * @return					- Menu item ID if registration is successful, otherwise -1
  */
 native kc_register_menu_item(const szName[], const szCallback[]);
+
+/**
+ * Register a view action
+ *
+ * @param 	szCallback		- action end handler
+ * @return					- View action ID if registration is successful, otherwise -1
+ */
+native kc_register_view_action(const szCallback[]);
 
 /**
  * Register a custom weapon HUD

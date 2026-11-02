@@ -1,5 +1,12 @@
 [en]
 DHUD_BUY = To change the knife, press Z
+KNIFE_DAGGER_DESC = \y[\rDagger Knife\y] - 753BC + razi {\rH\y}
+KNIFE_DAGGER_CHAT = ^4[Dagger Knife] Properties: ^1boomerang dagger, sacrificial blood, bloodthirst, hunter's mark, life leech
+DEATH_REASON_DAGGER = PIERCED BY A DAGGER
+DAGGER_SB_LOW_HEALTH = Sacrificial Blood requires at least %d HP
+DAGGER_BLOODTHIRST_STAGE = Bloodthirst: stage %s
+DAGGER_VAMPIRISM_BLOCKED = The vampirism mask does not work with Dagger Knife
+DAGGER_REGENERATION_BLOCKED = Bloodthirst V: regeneration is disabled
 DHUD_GM_RANDOM_KNIFE = RANDOM KNIFE
 DHUD_GM_ONE_LIFE = ONE LIFE
 
@@ -224,6 +231,13 @@ ZONE_START = The area is narrowing!
 
 [ru]
 DHUD_BUY = Чтобы сменить нож нажмите Z
+KNIFE_DAGGER_DESC = \y[\rDagger Knife\y] - 753BC + razi {\rH\y}
+KNIFE_DAGGER_CHAT = ^4[Dagger Knife] Properties: ^1boomerang dagger, sacrificial blood, bloodthirst, hunter's mark, life leech
+DEATH_REASON_DAGGER = PIERCED BY A DAGGER
+DAGGER_SB_LOW_HEALTH = Sacrificial Blood requires at least %d HP
+DAGGER_BLOODTHIRST_STAGE = Bloodthirst: stage %s
+DAGGER_VAMPIRISM_BLOCKED = The vampirism mask does not work with Dagger Knife
+DAGGER_REGENERATION_BLOCKED = Bloodthirst V: regeneration is disabled
 DHUD_GM_RANDOM_KNIFE = СЛУЧАЙНЫЙ НОЖ
 DHUD_GM_ONE_LIFE = ОДНА ЖИЗНЬ
 
