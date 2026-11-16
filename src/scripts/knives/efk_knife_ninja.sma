@@ -45,7 +45,9 @@ new const MODEL_P_KNIFE[] = "models/next21_efk/p_ninja_knife.mdl"
 #define CLASSNAME_FAKEPART	"next21_fakepart"
 #define CLASSNAME_SHADOW_CLONE	"next21_ninja_shadow"
 #define CLASSNAME_SHADOW_CLONE_KNIFE	"next21_ninja_shadow_knife"
-#define MODEL_SHADOW_CLONE	"models/player/efk_player_b7/efk_player_b7.mdl"
+new const MODEL_SHADOW_CLONE[] = "models/next21_efk/ninja_shadow_v1.mdl"
+new const MODEL_SHADOW_KNIFE[] = "models/next21_efk/p_ninja_shadow_v1.mdl"
+new const SPRITE_SHADOW_AURA[] = "sprites/next21_efk/ninja_shadow_aura_v1.spr"
 
 #define INVISTIME		7.0
 #define SHADOW_CLONE_DISTANCE	100.0
@@ -56,7 +58,9 @@ new const MODEL_P_KNIFE[] = "models/next21_efk/p_ninja_knife.mdl"
 #define SHADOW_AIM_RADIUS		48.0
 #define SHADOW_GLOW_UPDATE_INTERVAL	0.1
 #define SHADOW_JUMP_COOLDOWN	0.1
-#define SHADOW_CLONE_RENDER_AMT	128.0
+#define SHADOW_AURA_INTERVAL	0.25
+#define SHADOW_SEQ_CROUCH		10
+#define SHADOW_SEQ_STAND		12
 
 #define MODE_LASTMOVE		0
 #define MODE_FOLLOW		1
@@ -87,6 +91,7 @@ new const NINJA_MODE_NAMES[][] =
 #define var_shadow_endtime			var_fuser1
 #define var_shadow_spread_starttime	var_fuser2
 #define var_shadow_spread_endtime	var_fuser3
+#define var_shadow_auratime		var_fuser4
 #define var_shadow_startorigin		var_vuser1
 #define var_shadow_endorigin		var_vuser2
 #define var_shadow_hull			var_iuser3
@@ -125,7 +130,8 @@ enum _:Player_Properties_F
 new g_iKnifeId,
 g_player_data[MAX_PLAYERS][Player_Properties], Float:g_player_data_f[32][Player_Properties_F],
 Float:g_vShadowCloneOrigins[MAX_PLAYERS + 1][3][3], bool:g_bShadowClonePositionValid[MAX_PLAYERS + 1][3],
-sprIllusion, g_pKnifeVStr, g_pKnifeInvisVStr, g_pKnifePMdl
+sprIllusion, g_pKnifeVStr, g_pKnifeInvisVStr, g_pKnifePMdl,
+g_pShadowKnife, g_pShadowAura
 
 public plugin_precache()
 {
@@ -134,6 +140,9 @@ public plugin_precache()
 	precache_model(MODEL_V_KNIFE)
 	precache_model(MODEL_V_KNIFE_I)
 	g_pKnifePMdl = precache_model(MODEL_P_KNIFE)
+	precache_model(MODEL_SHADOW_CLONE)
+	g_pShadowKnife = precache_model(MODEL_SHADOW_KNIFE)
+	g_pShadowAura = precache_model(SPRITE_SHADOW_AURA)
 
 	precache_sound(SOUND_KNIFE_HIT1)
 	precache_sound(SOUND_KNIFE_STAB)
@@ -1229,7 +1238,7 @@ shadow_create_clone(iOwner, iTarget, const Float:vOrigin[3])
 	vAngles[2] = 0.0
 
 	new iHull = get_entvar(iOwner, var_flags) & FL_DUCKING ? HULL_HEAD : HULL_HUMAN
-	new iSeq = iHull == HULL_HEAD ? 2 : 0
+	new iSeq = iHull == HULL_HEAD ? SHADOW_SEQ_CROUCH : SHADOW_SEQ_STAND
 
 	engfunc(EngFunc_SetModel, iClone, MODEL_SHADOW_CLONE)
 	engfunc(EngFunc_SetOrigin, iClone, vStartOrigin)
@@ -1256,9 +1265,9 @@ shadow_create_clone(iOwner, iTarget, const Float:vOrigin[3])
 	set_entvar(iClone, var_solid, SOLID_NOT)
 	set_entvar(iClone, var_takedamage, DAMAGE_NO)
 	set_entvar(iClone, var_rendermode, kRenderNormal)
-	set_entvar(iClone, var_renderfx, kRenderFxGlowShell)
-	set_entvar(iClone, var_rendercolor, Float:{0.0, 0.0, 0.0})
-	set_entvar(iClone, var_renderamt, SHADOW_CLONE_RENDER_AMT)
+	set_entvar(iClone, var_renderfx, kRenderFxNone)
+	set_entvar(iClone, var_renderamt, 255.0)
+	set_entvar(iClone, var_shadow_auratime, fGameTime)
 	set_entvar(iClone, var_shadow_endtime, fGameTime + SHADOW_CLONE_LIFE)
 	set_entvar(iClone, var_nextthink, fGameTime + SHADOW_CLONE_THINK_INTERVAL)
 
@@ -1270,7 +1279,7 @@ shadow_create_clone(iOwner, iTarget, const Float:vOrigin[3])
 		set_entvar(iCloneKnife, var_aiment, iClone)
 		set_entvar(iCloneKnife, var_classname, CLASSNAME_SHADOW_CLONE_KNIFE)
 		set_entvar(iCloneKnife, var_owner, iOwner)
-		set_entvar(iCloneKnife, var_modelindex, g_pKnifePMdl)
+		set_entvar(iCloneKnife, var_modelindex, g_pShadowKnife)
 	}
 
 	SetThink(iClone, "shadow_clone_think")
@@ -1285,6 +1294,17 @@ public shadow_clone_think(iClone)
 	{
 		shadow_remove_clone(iClone)
 		return
+	}
+
+	if (fGameTime >= Float:get_entvar(iClone, var_shadow_auratime))
+	{
+		new Float:vAuraOrigin[3]
+		get_entvar(iClone, var_origin, vAuraOrigin)
+		vAuraOrigin[0] += random_float(-10.0, 10.0)
+		vAuraOrigin[1] += random_float(-10.0, 10.0)
+		vAuraOrigin[2] += random_float(-18.0, 18.0)
+		send_msg_TE_SMOKE(vAuraOrigin, g_pShadowAura, 4, 30, MSG_PVS, vAuraOrigin)
+		set_entvar(iClone, var_shadow_auratime, fGameTime + SHADOW_AURA_INTERVAL)
 	}
 
 	new Float:fSpreadEndTime = get_entvar(iClone, var_shadow_spread_endtime)
