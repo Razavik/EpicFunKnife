@@ -840,7 +840,7 @@ public efk_crosshair_draw_pre(iPlayer, iTarget, &AbilityType:iAbilType, bool:bDi
 
 public efk_ability_pre(iPlayer, iTarget)
 {
-	if (Player[iPlayer][Mode] == NINJA_MODE_SHADOW)
+	if (Player[iPlayer][Knife] == g_iKnifeId && Player[iPlayer][Mode] == NINJA_MODE_SHADOW)
 	{
 		new bool:bTargetValid = is_entity_player(iTarget) && is_user_alive(iTarget) && iTarget != iPlayer
 		new Float:fDistance = bTargetValid ? rg_entity_range(iPlayer, iTarget) : 0.0
@@ -909,7 +909,7 @@ public efk_ability(iPlayer)
 			if (!g_bShadowClonePositionValid[iPlayer][i])
 				continue
 
-			new iHull = get_entvar(iTarget, var_flags) & FL_DUCKING ? HULL_HEAD : HULL_HUMAN
+			new iHull = get_entvar(iPlayer, var_flags) & FL_DUCKING ? HULL_HEAD : HULL_HUMAN
 			if (!shadow_is_hull_vacant(g_vShadowCloneOrigins[iPlayer][i], iHull, iPlayer))
 			{
 				log_amx("[NinjaShadow] clone skipped: player=%d target=%d index=%d reason=hull_blocked_at_spawn",
@@ -1051,7 +1051,14 @@ public efk_ability(iPlayer)
 
 shadow_jump(iPlayer)
 {
-	if (Player[iPlayer][Mode] != NINJA_MODE_SHADOW)
+	if (!Player[iPlayer][IsAlive] || Player[iPlayer][Knife] != g_iKnifeId
+		|| Player[iPlayer][Mode] != NINJA_MODE_SHADOW)
+		return PLUGIN_HANDLED
+
+	if (kc_player_in_silence(iPlayer) || kc_player_in_freeze(iPlayer)
+		|| kc_player_get_capture(iPlayer) != CAPTURE_NONE
+		|| kc_player_check_game_flag(iPlayer, PLGF_IN_UNABILITY)
+		|| get_member_game(m_bRoundTerminating))
 		return PLUGIN_HANDLED
 
 	new Float:fGameTime = get_gametime()
@@ -1449,6 +1456,14 @@ bool:shadow_damage_segment(iPlayer, const Float:vStart[3], const Float:vEnd[3])
 		xs_vec_mul_scalar(vSegment, fAlong, vClosest)
 		xs_vec_add(vStart, vClosest, vClosest)
 		if (get_distance_f(vOrigin, vClosest) > 48.0)
+			continue
+
+		new iTrace = create_tr2()
+		engfunc(EngFunc_TraceLine, vClosest, vOrigin, IGNORE_MONSTERS, iPlayer, iTrace)
+		new bool:bBlocked = get_tr2(iTrace, TR_StartSolid) || get_tr2(iTrace, TR_AllSolid)
+			|| Float:get_tr2(iTrace, TR_flFraction) < 1.0
+		free_tr2(iTrace)
+		if (bBlocked)
 			continue
 
 		set_member(iTarget, m_LastHitGroup, HIT_GENERIC)
