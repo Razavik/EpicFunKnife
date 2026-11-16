@@ -49,6 +49,7 @@ new const MODEL_SHADOW_CLONE[] = "models/next21_efk/ninja_shadow_v1.mdl"
 new const MODEL_SHADOW_KNIFE[] = "models/next21_efk/p_ninja_shadow_v1.mdl"
 new const SPRITE_SHADOW_AURA[] = "sprites/next21_efk/ninja_shadow_aura_v1.spr"
 new const SPRITE_SHADOW_ORB[] = "sprites/next21_efk/ninja_shadow_orb_v1.spr"
+new const SPRITE_SHADOW_IMPACT[] = "sprites/shockwave.spr"
 #define CLASSNAME_SHADOW_ORB "next21_ninja_shadow_orb"
 #define SHADOW_ORB_DISTANCE 400.0
 #define SHADOW_ORB_SPEED 600.0
@@ -145,7 +146,7 @@ new g_iKnifeId,
 g_player_data[MAX_PLAYERS][Player_Properties], Float:g_player_data_f[32][Player_Properties_F],
 Float:g_vShadowCloneOrigins[MAX_PLAYERS + 1][3][3], bool:g_bShadowClonePositionValid[MAX_PLAYERS + 1][3],
 sprIllusion, g_pKnifeVStr, g_pKnifeInvisVStr, g_pKnifePMdl,
-g_pShadowKnife, g_pShadowAura, g_pShadowOrb
+g_pShadowKnife, g_pShadowAura, g_pShadowOrb, g_pShadowImpact
 
 public plugin_precache()
 {
@@ -158,6 +159,7 @@ public plugin_precache()
 	g_pShadowKnife = precache_model(MODEL_SHADOW_KNIFE)
 	g_pShadowAura = precache_model(SPRITE_SHADOW_AURA)
 	g_pShadowOrb = precache_model(SPRITE_SHADOW_ORB)
+	g_pShadowImpact = precache_model(SPRITE_SHADOW_IMPACT)
 
 	precache_sound(SOUND_KNIFE_HIT1)
 	precache_sound(SOUND_KNIFE_STAB)
@@ -1083,7 +1085,7 @@ public shadow_orb_think(iOrb)
 			&& get_member(iTarget, m_iTeam) != get_member(iOwner, m_iTeam)
 			&& !kc_player_check_game_flag(iTarget, PLGF_IN_UNABILITY))
 			shadow_spawn_clones(iOwner, iTarget)
-		shadow_orb_burst(iOrb)
+		shadow_orb_burst(iOrb, true)
 		return
 	}
 
@@ -1100,10 +1102,19 @@ public shadow_orb_think(iOrb)
 	set_entvar(iOrb, var_nextthink, fNow + SHADOW_ORB_INTERVAL)
 }
 
-shadow_orb_burst(iOrb)
+shadow_orb_burst(iOrb, bool:bImpact = false)
 {
 	new Float:vOrigin[3]
 	get_entvar(iOrb, var_origin, vOrigin)
+	if (bImpact)
+	{
+		new Float:vAxis[3]
+		xs_vec_copy(vOrigin, vAxis)
+		vAxis[2] += 240.0
+		send_msg_TE_BEAMCYLINDER(vOrigin, vAxis, g_pShadowImpact,
+			0, 0, 3, 8, 0, {190, 180, 235}, 160, 0, MSG_PVS, vOrigin)
+		send_msg_TE_DLIGHT(vOrigin, 8, {190, 180, 235}, 2, 40, MSG_PVS, vOrigin)
+	}
 	send_msg_TE_EXPLOSION(vOrigin, g_pShadowOrb, 6, 32,
 		TE_EXPLFLAG_NODLIGHTS | TE_EXPLFLAG_NOSOUND | TE_EXPLFLAG_NOPARTICLES,
 		MSG_PVS, vOrigin)
