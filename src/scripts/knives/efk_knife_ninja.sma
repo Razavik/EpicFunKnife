@@ -59,7 +59,6 @@ new const SPRITE_SHADOW_AURA[] = "sprites/next21_efk/ninja_shadow_aura_v1.spr"
 #define SHADOW_GLOW_UPDATE_INTERVAL	0.1
 #define SHADOW_JUMP_COOLDOWN	0.1
 #define SHADOW_AURA_INTERVAL	0.25
-#define SHADOW_SEQ_CROUCH		10
 #define SHADOW_SEQ_STAND		12
 
 #define MODE_LASTMOVE		0
@@ -1238,7 +1237,7 @@ shadow_create_clone(iOwner, iTarget, const Float:vOrigin[3])
 	vAngles[2] = 0.0
 
 	new iHull = get_entvar(iOwner, var_flags) & FL_DUCKING ? HULL_HEAD : HULL_HUMAN
-	new iSeq = iHull == HULL_HEAD ? SHADOW_SEQ_CROUCH : SHADOW_SEQ_STAND
+	new iSeq = SHADOW_SEQ_STAND
 
 	engfunc(EngFunc_SetModel, iClone, MODEL_SHADOW_CLONE)
 	engfunc(EngFunc_SetOrigin, iClone, vStartOrigin)
