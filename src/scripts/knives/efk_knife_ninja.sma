@@ -60,6 +60,10 @@ new const SPRITE_SHADOW_AURA[] = "sprites/next21_efk/ninja_shadow_aura_v1.spr"
 #define SHADOW_JUMP_COOLDOWN	0.1
 #define SHADOW_AURA_INTERVAL	0.25
 #define SHADOW_SEQ_STAND		12
+#define SHADOW_FOV_BOOST		25.0
+#define SHADOW_FOV_EXPAND_TIME	0.08
+#define SHADOW_FOV_RETURN_TIME	0.24
+#define SHADOW_FOV_INTERVAL	0.01
 
 #define MODE_LASTMOVE		0
 #define MODE_FOLLOW		1
@@ -123,7 +127,11 @@ enum _:Player_Properties_F
 	Float:FakeAttackDalay,
 	Float:FakeStepDelay,
 	Float:ShadowJumpTime,
-	Float:ShadowGlowUpdateTime
+	Float:ShadowGlowUpdateTime,
+	Float:ShadowFovEndTime,
+	Float:ShadowFovUpdateTime,
+	Float:ShadowFovBase,
+	Float:ShadowFovFrom
 }
 
 new g_iKnifeId,
@@ -198,6 +206,7 @@ public plugin_init()
 
 public client_putinserver(iPlayer)
 {
+	PlayerF[iPlayer][ShadowFovEndTime] = 0.0
 	Player[iPlayer][IsAlive] = false
 	Player[iPlayer][Team] = 0
 	Player[iPlayer][Mode] = NINJA_MODE_INVISION
@@ -209,6 +218,7 @@ public client_putinserver(iPlayer)
 
 public client_disconnected(iPlayer)
 {
+	PlayerF[iPlayer][ShadowFovEndTime] = 0.0
 	Player[iPlayer][IsAlive] = false
 	Player[iPlayer][Team] = 0
 	shadow_remove_owned(iPlayer)
@@ -221,6 +231,7 @@ public fw_PlayerSpawn(iPlayer)
 {
 	if (is_user_alive(iPlayer))
 	{
+		shadow_reset_fov(iPlayer)
 		Player[iPlayer][IsAlive] = true
 		PlayerF[iPlayer][FakeRenderDalay] = 0.0
 		PlayerF[iPlayer][InvisibleTime] = 0.0
@@ -251,6 +262,7 @@ public fw_PostThink(iPlayer)
 		return HAM_IGNORED
 
 	new Float:fGameTime = get_gametime()
+	shadow_update_fov(iPlayer, fGameTime)
 	if (Player[iPlayer][Mode] == NINJA_MODE_SHADOW)
 	{
 		if (fGameTime >= PlayerF[iPlayer][ShadowGlowUpdateTime])
@@ -598,6 +610,7 @@ public fw_PreSecondaryAttack(iWeapon)
 
 public fw_PlayerKilled(iVictim)
 {
+	shadow_reset_fov(iVictim)
 	Player[iVictim][IsAlive] = false
 	PlayerF[iVictim][FakeRenderDalay] = 0.0
 	shadow_remove_owned(iVictim)
@@ -727,6 +740,7 @@ public efk_ability_toggle(iPlayer)
 
 ninja_cycle_mode(iPlayer)
 {
+	shadow_reset_fov(iPlayer)
 	if (PlayerF[iPlayer][InvisibleTime] > 0.0)
 		kc_player_uninvision(iPlayer)
 
@@ -795,6 +809,7 @@ public efk_status_draw(iPlayer, iSubject, iKnifeId)
 
 public efk_change_knife_core_post(iPlayer, iKnifeId)
 {
+	shadow_reset_fov(iPlayer)
 	if (Player[iPlayer][Knife] == g_iKnifeId && iKnifeId != g_iKnifeId && PlayerF[iPlayer][InvisibleTime] > 0.0)
 		kc_player_uninvision(iPlayer)
 
@@ -1097,6 +1112,10 @@ shadow_jump(iPlayer)
 	set_entvar(iPlayer, var_velocity, vVelocity)
 	set_entvar(iPlayer, var_basevelocity, vBaseVelocity)
 
+	shadow_start_fov(iPlayer, fGameTime)
+	send_msg_TE_SMOKE(vOldOrigin, g_pShadowAura, 7, 40, MSG_PVS, vOldOrigin)
+	send_msg_TE_SMOKE(vNewOrigin, g_pShadowAura, 7, 40, MSG_PVS, vNewOrigin)
+
 	rg_set_animation(iPlayer, PLAYER_ATTACK1)
 	engfunc(EngFunc_EmitSound, iPlayer, CHAN_WEAPON,
 		bHit ? SOUND_KNIFE_HIT1 : (random(2) ? SOUND_KNIFE_SLASH1 : SOUND_KNIFE_SLASH2),
@@ -1106,6 +1125,72 @@ shadow_jump(iPlayer)
 	shadow_remove_clone(iClone)
 
 	return PLUGIN_CONTINUE
+}
+
+shadow_start_fov(iPlayer, Float:fGameTime)
+{
+	new Float:fFov = Float:get_entvar(iPlayer, var_fov)
+	if (PlayerF[iPlayer][ShadowFovEndTime] == 0.0)
+		PlayerF[iPlayer][ShadowFovBase] = fFov
+
+	PlayerF[iPlayer][ShadowFovFrom] = fFov > 0.0 ? fFov : 90.0
+	PlayerF[iPlayer][ShadowFovEndTime] = fGameTime + SHADOW_FOV_EXPAND_TIME + SHADOW_FOV_RETURN_TIME
+	PlayerF[iPlayer][ShadowFovUpdateTime] = fGameTime
+}
+
+shadow_update_fov(iPlayer, Float:fGameTime)
+{
+	if (PlayerF[iPlayer][ShadowFovEndTime] == 0.0)
+		return
+
+	if (fGameTime >= PlayerF[iPlayer][ShadowFovEndTime])
+	{
+		shadow_reset_fov(iPlayer)
+		return
+	}
+
+	if (fGameTime < PlayerF[iPlayer][ShadowFovUpdateTime])
+		return
+
+	PlayerF[iPlayer][ShadowFovUpdateTime] = fGameTime + SHADOW_FOV_INTERVAL
+	new Float:fBase = PlayerF[iPlayer][ShadowFovBase]
+	if (fBase <= 0.0)
+		fBase = 90.0
+
+	new Float:fPeak = floatmax(fBase, floatmin(fBase + SHADOW_FOV_BOOST, 120.0))
+	new Float:fElapsed = fGameTime - (PlayerF[iPlayer][ShadowFovEndTime]
+		- SHADOW_FOV_EXPAND_TIME - SHADOW_FOV_RETURN_TIME)
+	new Float:fProgress, Float:fFrom, Float:fTo
+	if (fElapsed < SHADOW_FOV_EXPAND_TIME)
+	{
+		fProgress = floatclamp(fElapsed / SHADOW_FOV_EXPAND_TIME, 0.0, 1.0)
+		fFrom = PlayerF[iPlayer][ShadowFovFrom]
+		fTo = fPeak
+	}
+	else
+	{
+		fProgress = floatclamp((fElapsed - SHADOW_FOV_EXPAND_TIME) / SHADOW_FOV_RETURN_TIME, 0.0, 1.0)
+		fFrom = fPeak
+		fTo = fBase
+	}
+
+	fProgress = fProgress * fProgress * (3.0 - 2.0 * fProgress)
+	new iFov = floatround(fFrom + (fTo - fFrom) * fProgress)
+	if (iFov != floatround(Float:get_entvar(iPlayer, var_fov)))
+	{
+		set_entvar(iPlayer, var_fov, float(iFov))
+		send_msg_SetFOV(iFov, MSG_ONE, _, iPlayer)
+	}
+}
+
+shadow_reset_fov(iPlayer)
+{
+	if (PlayerF[iPlayer][ShadowFovEndTime] == 0.0)
+		return
+
+	set_entvar(iPlayer, var_fov, PlayerF[iPlayer][ShadowFovBase])
+	send_msg_SetFOV(floatround(PlayerF[iPlayer][ShadowFovBase]), MSG_ONE, _, iPlayer)
+	PlayerF[iPlayer][ShadowFovEndTime] = 0.0
 }
 
 ninja_update_ability_target(iPlayer)
