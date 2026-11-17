@@ -66,7 +66,6 @@ new const SPRITE_SHADOW_IMPACT[] = "sprites/next21_efk/ninja_shadow_impact_v1.sp
 #define SHADOW_CLONE_SPREAD_TIME	0.3
 #define SHADOW_CLONE_THINK_INTERVAL	0.02
 #define SHADOW_AIM_RADIUS		96.0
-#define SHADOW_GLOW_UPDATE_INTERVAL	0.1
 #define SHADOW_JUMP_COOLDOWN	0.1
 #define SHADOW_AURA_INTERVAL	0.20
 #define SHADOW_SEQ_STAND		12
@@ -144,7 +143,6 @@ enum _:Player_Properties_F
 	Float:FakeAttackDalay,
 	Float:FakeStepDelay,
 	Float:ShadowJumpTime,
-	Float:ShadowGlowUpdateTime,
 	Float:ShadowFovEndTime,
 	Float:ShadowFovUpdateTime,
 	Float:ShadowFovBase,
@@ -233,7 +231,6 @@ public client_putinserver(iPlayer)
 	Player[iPlayer][ShadowPendingClone] = 0
 	Player[iPlayer][ShadowUsePressed] = false
 	PlayerF[iPlayer][ShadowJumpTime] = 0.0
-	PlayerF[iPlayer][ShadowGlowUpdateTime] = 0.0
 }
 
 public client_disconnected(iPlayer)
@@ -256,7 +253,6 @@ public fw_PlayerSpawn(iPlayer)
 		PlayerF[iPlayer][FakeRenderDalay] = 0.0
 		PlayerF[iPlayer][InvisibleTime] = 0.0
 		PlayerF[iPlayer][ShadowJumpTime] = 0.0
-		PlayerF[iPlayer][ShadowGlowUpdateTime] = 0.0
 		Player[iPlayer][ShadowUsePressed] = false
 		shadow_remove_owned(iPlayer)
 
@@ -285,12 +281,6 @@ public fw_PostThink(iPlayer)
 	shadow_update_fov(iPlayer, fGameTime)
 	if (Player[iPlayer][Mode] == NINJA_MODE_SHADOW)
 	{
-		if (fGameTime >= PlayerF[iPlayer][ShadowGlowUpdateTime])
-		{
-			PlayerF[iPlayer][ShadowGlowUpdateTime] = fGameTime + SHADOW_GLOW_UPDATE_INTERVAL
-			shadow_update_aim_glow(iPlayer)
-		}
-
 		new iButtons = get_entvar(iPlayer, var_button)
 		if (!(iButtons & IN_USE))
 			Player[iPlayer][ShadowUsePressed] = false
@@ -761,7 +751,6 @@ ninja_cycle_mode(iPlayer)
 
 	Player[iPlayer][ShadowUsePressed] = false
 	Player[iPlayer][ShadowPendingClone] = 0
-	PlayerF[iPlayer][ShadowGlowUpdateTime] = 0.0
 	Player[iPlayer][Mode] = (Player[iPlayer][Mode] + 1) % 3
 	log_amx("[NinjaShadow] mode changed: player=%d mode=%d", iPlayer, Player[iPlayer][Mode])
 	ninja_update_ability_target(iPlayer)
@@ -1649,7 +1638,7 @@ public shadow_clone_think(iClone)
 			vAuraOrigin[0] += random_float(-12.0, 12.0)
 			vAuraOrigin[1] += random_float(-12.0, 12.0)
 			vAuraOrigin[2] += -28.0 + float(i) * 12.0 + random_float(-3.0, 3.0)
-			send_msg_TE_SMOKE(vAuraOrigin, g_pShadowAura, random_num(2, 3), 100, MSG_PVS, vAuraOrigin)
+			send_msg_TE_SMOKE(vAuraOrigin, g_pShadowAura, random_num(2, 3), 40, MSG_PVS, vAuraOrigin)
 		}
 		set_entvar(iClone, var_shadow_auratime, fGameTime + SHADOW_AURA_INTERVAL)
 	}
@@ -1725,18 +1714,6 @@ bool:shadow_is_world_hull_vacant(const Float:vOrigin[3], iHull, iIgnore)
 	new bool:bVacant = !get_tr2(iTrace, TR_StartSolid) && !get_tr2(iTrace, TR_AllSolid) && get_tr2(iTrace, TR_InOpen)
 	free_tr2(iTrace)
 	return bVacant
-}
-
-shadow_update_aim_glow(iPlayer)
-{
-	new iClone = shadow_get_aimed_clone(iPlayer)
-	if (is_nullent(iClone))
-		return
-
-	new Float:vOrigin[3]
-	get_entvar(iClone, var_origin, vOrigin)
-	vOrigin[2] += 36.0
-	send_msg_TE_DLIGHT(vOrigin, 48, {255, 255, 255}, 2, 0, MSG_ONE, _, iPlayer)
 }
 
 shadow_get_aimed_clone(iPlayer)
