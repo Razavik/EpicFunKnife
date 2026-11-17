@@ -259,6 +259,7 @@ enum _:PlayerProperties
 	PlrKinfeModelIndex,
 	PlrBurned,
 	PlrBurnAttacker,
+	bool:PlrFixedBurn,
 	PlrLevitation,
 	PlrLevitationPt,
 	PlrLevitationPressedButton,
@@ -375,6 +376,7 @@ enum _:PlayerPropertiesState
 	StateFlags,
 	StateBurned,
 	StateBurnAttacker,
+	bool:StateFixedBurn,
 	StateGlowR[MAX_MIXCOLORS],
 	StateGlowG[MAX_MIXCOLORS],
 	StateGlowB[MAX_MIXCOLORS],
@@ -478,7 +480,7 @@ g_item_data[MAX_ITEMS][ItemProperties],
 g_menu_item_data[MAX_MENUITEMS][MenuItemProperties],
 g_view_action_data[MAX_VIEW_ACTIONS][ViewActionProperties],
 
-forward_abil_pre, forward_abil_post, forward_core_change_knife_pre, forward_core_change_knife_post,
+forward_targeted_ability_block_pre, forward_damage_block_pre, forward_projectile_block_pre, forward_abil_pre, forward_abil_post, forward_core_change_knife_pre, forward_core_change_knife_post,
 forward_crosshair_draw_pre,
 forward_abil2_pre, forward_abil2_post, forward_abil3_pre, forward_abil3_post, forward_abil4_pre, forward_abil4_post,
 forward_charge_draw_pre, forward_player_knife_killed, forward_player_death, forward_player_change_team, forward_status_draw,
@@ -656,6 +658,8 @@ public plugin_natives()
 	register_native("kc_player_set_bair", "_21kc_player_set_bair")
 
 	register_native("kc_player_burn", "_21kc_player_burn")
+	register_native("kc_player_ignite", "_21kc_player_ignite")
+	register_native("kc_player_blocks_projectile", "_21kc_player_blocks_projectile")
 	register_native("kc_player_in_burn", "_21kc_player_in_burn")
 	register_native("kc_player_unburn", "_21kc_player_unburn")
 
@@ -817,6 +821,9 @@ public plugin_init()
 
 	g_tInventoryCache = TrieCreate()
 
+	forward_targeted_ability_block_pre = CreateMultiForward("efk_targeted_ability_block_pre", ET_STOP, FP_CELL, FP_CELL)
+	forward_damage_block_pre = CreateMultiForward("efk_damage_block_pre", ET_STOP, FP_CELL, FP_CELL, FP_CELL, FP_FLOAT, FP_CELL)
+	forward_projectile_block_pre = CreateMultiForward("efk_projectile_block_pre", ET_STOP, FP_CELL, FP_CELL)
 	forward_abil_pre = CreateMultiForward("efk_ability_pre", ET_STOP, FP_CELL, FP_CELL)
 	forward_abil_post = CreateMultiForward("efk_ability_post", ET_IGNORE, FP_CELL, FP_CELL)
 	forward_core_change_knife_pre = CreateMultiForward("efk_change_knife_core_pre", ET_STOP, FP_CELL, FP_CELL)
@@ -1090,6 +1097,7 @@ public client_disconnected(iPlayer)
 	Player[iPlayer][PlrVision] = VISION_NORMAL
 	Player[iPlayer][PlrCorpseType] = CORP_NORMAL
 
+	Player[iPlayer][PlrFixedBurn] = false
 	Player[iPlayer][PlrBurned] = 0
 	player_unfreeze(iPlayer)
 	PlayerF[iPlayer][PlrChilled] = 0.0
@@ -1660,8 +1668,8 @@ public RG_CBasePlayer_PreThink_Pre(iPlayer)
 					fBurnDelay[iPlayer] = fGameTime + 0.2
 
 					new iBurnAttacker = Player[iPlayer][PlrBurnAttacker]
-					new bool:bBurnCrit = random_num(0, 100) <= BURN_CRIT_CHANCE
-					new iBurnDamage = (bBurnCrit ? BURN_CRIT_DMG : BURN_DMG)
+					new bool:bBurnCrit = !Player[iPlayer][PlrFixedBurn] && random_num(0, 100) <= BURN_CRIT_CHANCE
+					new iBurnDamage = Player[iPlayer][PlrFixedBurn] ? 1 : (bBurnCrit ? BURN_CRIT_DMG : BURN_DMG)
 
 					new Float:fVelocityModifier = get_member(iPlayer, m_flVelocityModifier)
 
@@ -1929,6 +1937,7 @@ public RG_CBasePlayer_PreThink_Pre(iPlayer)
 			PlayerStateF[iPlayer][0][StateGametime] = fGameTime
 			PlayerState[iPlayer][0][StateBurned] = Player[iPlayer][PlrBurned]
 			PlayerState[iPlayer][0][StateBurnAttacker] = Player[iPlayer][PlrBurnAttacker]
+			PlayerState[iPlayer][0][StateFixedBurn] = Player[iPlayer][PlrFixedBurn]
 			PlayerState[iPlayer][0][StateGlowCount] = Player[iPlayer][PlrGlowCount]
 
 			PlayerStateF[iPlayer][0][StateMaxHP] = PlayerF[iPlayer][PlrMaxHP]
@@ -2310,6 +2319,11 @@ public fw_Player_Damage(iVictim, iInflictor, iAttacker, Float:fDamage, iFlags)
 {
 	if (is_nullent(iVictim))
 		return HAM_IGNORED
+
+	new iBlockResult
+	ExecuteForward(forward_damage_block_pre, iBlockResult, iVictim, iInflictor, iAttacker, fDamage, iFlags)
+	if (iBlockResult == PLUGIN_HANDLED)
+		return HAM_SUPERCEDE
 
 	new iVictimTeam = Player[iVictim][PlrTeam]
 
@@ -3518,6 +3532,13 @@ public fw_SecondaryAttack(iWeapon)
 	}
 
 	new abilReturn = PLUGIN_CONTINUE
+	if (ABIL_TARGET_PLAYER <= iAbilType && iAbilType <= ABIL_TARGET_ENEMY && is_entity_player(iTarget))
+	{
+		ExecuteForward(forward_targeted_ability_block_pre, abilReturn, iPlayer, iTarget)
+		if (abilReturn == PLUGIN_HANDLED)
+			return HAM_IGNORED
+	}
+
 	ExecuteForward(forward_abil_pre, abilReturn, iPlayer, iTarget)
 	if (abilReturn == PLUGIN_HANDLED)
 		return HAM_IGNORED
@@ -3762,7 +3783,7 @@ public fw_PlayerTouch(iPlayer, iOther)
 	if (is_entity_player(iOther))
 	{
 		if (Player[iPlayer][PlrBurned])
-			player_burn(iOther, Player[iPlayer][PlrBurnAttacker], Player[iPlayer][PlrBurned], true)
+			player_burn(iOther, Player[iPlayer][PlrBurnAttacker], Player[iPlayer][PlrBurned], true, Player[iPlayer][PlrFixedBurn])
 
 		if (Player[iPlayer][PlrTeam] != Player[iOther][PlrTeam])
 		{
@@ -6559,7 +6580,7 @@ player_set_windboost(iPlayer, WindBoostType:iType, bool:bUpdateState=true)
 	ExecuteForward(forward_update_windboost, _, iPlayer, iType)
 }
 
-bool:player_burn(iPlayer, iAttacker, iCycles, bool:bOverlap=false)
+bool:player_burn(iPlayer, iAttacker, iCycles, bool:bOverlap=false, bool:bFixed=false)
 {
 	if (!CheckPlayerGameFlag(iPlayer, PLGF_IS_ALIVE))
 		return false
@@ -6594,6 +6615,7 @@ bool:player_burn(iPlayer, iAttacker, iCycles, bool:bOverlap=false)
 		player_unchill(iPlayer)
 	}
 
+	Player[iPlayer][PlrFixedBurn] = bFixed
 	Player[iPlayer][PlrBurned] = iCycles
 	Player[iPlayer][PlrBurnAttacker] = iAttacker
 
@@ -6613,6 +6635,7 @@ player_unburn(iPlayer)
 			send_msg_TE_SMOKE(vOrigin, g_pSmokeSpr, random_num(15, 20), random_num(10, 20), MSG_PVS, vOrigin)
 		}
 
+		Player[iPlayer][PlrFixedBurn] = false
 		Player[iPlayer][PlrBurned] = 0
 
 		ExecuteForward(forward_unburn, _, iPlayer)
@@ -7012,7 +7035,7 @@ bool:friendly_swap(iPlayer, iTarget)
 
 	if (Player[iTarget][PlrBurned])
 	{
-		player_burn(iPlayer, iPlayer, Player[iTarget][PlrBurned], true)
+		player_burn(iPlayer, iPlayer, Player[iTarget][PlrBurned], true, Player[iTarget][PlrFixedBurn])
 		player_unburn(iTarget)
 		bRes = true
 	}
@@ -7772,7 +7795,9 @@ public _21kc_player_set_crit_chance(plugin, num_params)
 
 public bool:_21kc_player_can_ability(plugin, num_params)
 {
-	new iPlayer = get_param(1)
+	new iPlayer = get_param(1), iAbility = get_param(2)
+	if (!is_entity_player(iPlayer) || iAbility < 0 || iAbility > 4)
+		return false
 
 	if (!CheckPlayerGameFlag(iPlayer, PLGF_IS_ALIVE))
 		return false
@@ -7787,7 +7812,7 @@ public bool:_21kc_player_can_ability(plugin, num_params)
 		return false
 
 	new iKnifeId = Player[iPlayer][PlrKnife]
-	switch (get_param(2))
+	switch (iAbility)
 	{
 		case 1:
 		{
@@ -8306,6 +8331,38 @@ public _21kc_player_set_bair(plugin, num_params)
 	}
 }
 
+public bool:_21kc_player_ignite(plugin, num_params)
+{
+	new iPlayer = get_param(1), iAttacker = get_param(2)
+	new Float:fDuration = get_param_f(3), Float:fMaxDuration = get_param_f(4)
+	if (!is_entity_player(iPlayer) || !is_entity_player(iAttacker) || fDuration <= 0.0 || fMaxDuration <= 0.0)
+		return false
+
+	new iMaxCycles = floatround(fMaxDuration / 0.2, floatround_floor)
+	if (iMaxCycles < 1)
+		return false
+
+	new iCycles = min(iMaxCycles, Player[iPlayer][PlrBurned] + floatround(fDuration / 0.2))
+	if (iCycles < 1)
+		return false
+	if (!player_burn(iPlayer, iAttacker, iCycles, true, true))
+		return false
+
+	Player[iPlayer][PlrBurned] = iCycles
+	Player[iPlayer][PlrFixedBurn] = true
+	return true
+}
+
+public bool:_21kc_player_blocks_projectile(plugin, num_params)
+{
+	new iPlayer = get_param(1), iProjectile = get_param(2)
+	if (!is_entity_player(iPlayer) || !CheckPlayerGameFlag(iPlayer, PLGF_IS_ALIVE) || is_nullent(iProjectile))
+		return false
+
+	new iResult
+	ExecuteForward(forward_projectile_block_pre, iResult, iPlayer, iProjectile)
+	return iResult == PLUGIN_HANDLED
+}
 public bool:_21kc_player_burn(plugin, num_params)
 {
 	return player_burn(get_param(1), get_param(2), get_param(3))
@@ -8619,7 +8676,7 @@ public bool:_21kc_player_swap(plugin, num_params)
 
 	if (Player[iPlayer][PlrBurned])
 	{
-		player_burn(iTarget, iPlayer, Player[iPlayer][PlrBurned], true)
+		player_burn(iTarget, iPlayer, Player[iPlayer][PlrBurned], true, Player[iPlayer][PlrFixedBurn])
 		player_unburn(iPlayer)
 	}
 	else if (PlayerF[iPlayer][PlrFrozen] > 0.0)
@@ -8796,7 +8853,7 @@ public bool:_21kc_player_reburn(plugin, num_params)
 	}
 
 	if (PlayerState[iPlayer][3][StateBurned])
-		player_burn(iPlayer, PlayerState[iPlayer][3][StateBurnAttacker], PlayerState[iPlayer][3][StateBurned])
+		player_burn(iPlayer, PlayerState[iPlayer][3][StateBurnAttacker], PlayerState[iPlayer][3][StateBurned], false, PlayerState[iPlayer][3][StateFixedBurn])
 
 	if (PlayerStateF[iPlayer][3][StateBlindTime])
 		player_blind(iPlayer, 1, PlayerStateF[iPlayer][3][StateBlindTime] - PlayerStateF[iPlayer][3][StateGametime])

@@ -1409,6 +1409,12 @@ public kunai_think(iEnt)
 
 public kunai_touch(iEnt, iOther)
 {
+	if (kc_player_blocks_projectile(iOther, iEnt))
+	{
+		kunai_remove(iEnt)
+		return HC_CONTINUE
+	}
+
 	if (!iOther)
 	{
 		kunai_stop(iEnt)

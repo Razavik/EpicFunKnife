@@ -1226,6 +1226,12 @@ public acidball_think(iAcidballEnt)
 
 public acidball_touch(iAcidballEnt, iOther)
 {
+	if (kc_player_blocks_projectile(iOther, iAcidballEnt))
+	{
+		rg_remove_entity(iAcidballEnt)
+		return HC_CONTINUE
+	}
+
 	if (iOther > 0)
 	{
 		new iOwner = get_entvar(iAcidballEnt, var_owner)

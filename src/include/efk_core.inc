@@ -670,7 +670,7 @@ native kc_player_set_abil4_name(const iPlayer, const szName[]);
  * Check whether the player can use the ability (regardless of the player's active weapon)
  *
  * @param 	iPlayer			- Player ID
- * @param 	iAbil			- Ability number (1, 2, 3, 4)
+ * @param 	iAbil			- Ability number (1, 2, 3, 4), or 0 for shared restrictions only
  * @return					- Call result
  */
 native bool:kc_player_can_ability(const iPlayer, const iAbil);
@@ -1656,3 +1656,29 @@ native kc_register_view_action(const szCallback[]);
  * @return					- Call result
  */
 native bool:kc_register_weapon_hud(const szOldWeapon[], const szNewWeapon[]);
+
+/**
+ * Called before any player damage side effects. Return PLUGIN_HANDLED to block damage.
+ */
+forward efk_damage_block_pre(iVictim, iInflictor, iAttacker, Float:fDamage, iFlags);
+
+/**
+ * Called before a projectile's hit effects. Does not remove the projectile.
+ * Return PLUGIN_HANDLED to block; the projectile owner must run its own cleanup.
+ */
+forward efk_projectile_block_pre(iPlayer, iProjectile);
+
+/**
+ * Extend fixed-damage ignition (1 HP per 0.2-second cycle), capped in seconds.
+ * Duration is quantized to whole burn cycles; callers retain fractional heat.
+ * Other sources using kc_player_burn retain their usual critical burn behavior.
+ */
+native bool:kc_player_ignite(const iPlayer, const iAttacker, const Float:fDuration, const Float:fMaxDuration=10.0);
+
+/**
+ * Check a projectile hit against active shields, before applying any hit effects.
+ * On true the caller must remove the projectile with its normal cleanup routine.
+ */
+native bool:kc_player_blocks_projectile(const iPlayer, const iProjectile);
+/** Called before directed player-targeted abilities; return PLUGIN_HANDLED to block. */
+forward efk_targeted_ability_block_pre(iPlayer, iTarget);

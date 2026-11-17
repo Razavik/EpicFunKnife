@@ -565,6 +565,12 @@ public sphere_think(iSphereEnt)
 
 public sphere_touch(iSphereEnt, iOther)
 {
+	if (kc_player_blocks_projectile(iOther, iSphereEnt))
+	{
+		sphere_remove(iSphereEnt)
+		return HC_CONTINUE
+	}
+
 	if (!is_entity(iSphereEnt))
 		return HC_CONTINUE
 
@@ -612,13 +618,12 @@ public sphere_touch(iSphereEnt, iOther)
 
 sphere_remove(iSphereEnt)
 {
+	new iOwner = get_entvar(iSphereEnt, var_owner)
 	new iShellEnt = get_entvar(iSphereEnt, var_sphere_shell)
 	if (!is_nullent(iShellEnt))
 		rg_remove_entity(iShellEnt)
 
 	rg_remove_entity(iSphereEnt)
-
-	new iOwner = get_entvar(iSphereEnt, var_owner)
 	if (is_entity_player(iOwner))
 		Player[iOwner][PlrSphereEnt] = 0
 }

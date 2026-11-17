@@ -654,6 +654,12 @@ public bug_think(iEnt)
 
 public bug_touch(iEnt, iOther)
 {
+	if (kc_player_blocks_projectile(iOther, iEnt))
+	{
+		kill_bug(iEnt)
+		return
+	}
+
 	if (is_entity_player(iOther) && get_entvar(iEnt, var_skin) + 1 == get_member(iOther, m_iTeam))
 		set_entvar(iEnt, var_owner, iOther)
 

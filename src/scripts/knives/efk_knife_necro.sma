@@ -486,6 +486,12 @@ public spit_think(iSpitEnt)
 
 public spit_touch(iSpitEnt, iOther)
 {
+	if (kc_player_blocks_projectile(iOther, iSpitEnt))
+	{
+		spit_kill(iSpitEnt, true)
+		return
+	}
+
 	if (is_entity_player(iOther))
 	{
 		new iOwner = get_entvar(iSpitEnt, var_owner)

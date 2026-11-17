@@ -670,6 +670,12 @@ public icicle_think(iIcicleEnt)
 
 public icicle_touch(iIcicleEnt, iOther)
 {
+	if (kc_player_blocks_projectile(iOther, iIcicleEnt))
+	{
+		rg_remove_entity(iIcicleEnt)
+		return
+	}
+
 	new iOwner = get_entvar(iIcicleEnt, var_owner)
 	new Float:fGameTime = get_gametime()
 

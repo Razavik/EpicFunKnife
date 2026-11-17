@@ -674,6 +674,12 @@ public windwave_think(iWaveEnt)
 
 public windwave_touch(iWaveEnt, iOther)
 {
+	if (kc_player_blocks_projectile(iOther, iWaveEnt))
+	{
+		remove_windwave(iWaveEnt)
+		return
+	}
+
 	static Float:vWaveOrigin[3], Float:vWaveAngles[3], Float:vEntOrigin[3]
 	static Float:vForward[3], Float:vRight[3], Float:vVelocity[3]
 
