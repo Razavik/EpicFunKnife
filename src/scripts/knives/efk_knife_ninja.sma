@@ -1745,6 +1745,7 @@ shadow_get_aimed_clone(iPlayer)
 
 	new iBestClone = NULLENT
 	new Float:fBestDistance = SHADOW_CLONE_RANGE + 1.0
+	new Float:fBestAimScore = 99999.0
 	new Float:fNow = get_gametime()
 	new iClone = NULLENT
 	while ((iClone = rg_find_ent_by_class(iClone, CLASSNAME_SHADOW_CLONE)))
@@ -1756,15 +1757,21 @@ shadow_get_aimed_clone(iPlayer)
 		new Float:vCloneOrigin[3], Float:vAimOrigin[3], Float:vOffset[3], Float:vClosest[3]
 		get_entvar(iClone, var_origin, vCloneOrigin)
 		xs_vec_copy(vCloneOrigin, vAimOrigin)
-		vAimOrigin[2] += 36.0
+		vAimOrigin[2] += 12.0
 		xs_vec_sub(vAimOrigin, vStart, vOffset)
 		new Float:fAlong = xs_vec_dot(vOffset, vForward)
-		if (fAlong <= 0.0 || fAlong > SHADOW_CLONE_RANGE || fAlong >= fBestDistance)
+		if (fAlong <= 0.0 || fAlong > SHADOW_CLONE_RANGE)
 			continue
 
 		xs_vec_mul_scalar(vForward, fAlong, vClosest)
 		xs_vec_add(vStart, vClosest, vClosest)
-		if (get_distance_f(vAimOrigin, vClosest) > SHADOW_AIM_RADIUS)
+		new Float:fAimOffset = get_distance_f(vAimOrigin, vClosest)
+		if (fAimOffset > SHADOW_AIM_RADIUS)
+			continue
+
+		new Float:fAimScore = fAimOffset / fAlong
+		if (fAimScore > fBestAimScore + 0.0001
+			|| (floatabs(fAimScore - fBestAimScore) <= 0.0001 && fAlong >= fBestDistance))
 			continue
 
 		new iTrace = create_tr2()
@@ -1775,6 +1782,7 @@ shadow_get_aimed_clone(iPlayer)
 		if (fFraction < 0.98)
 			continue
 
+		fBestAimScore = fAimScore
 		fBestDistance = fAlong
 		iBestClone = iClone
 	}
