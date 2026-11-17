@@ -74,6 +74,7 @@ new const SPRITE_SHADOW_IMPACT[] = "sprites/next21_efk/ninja_shadow_impact_v1.sp
 #define SHADOW_FOV_EXPAND_TIME	0.20
 #define SHADOW_FOV_RETURN_TIME	0.30
 #define SHADOW_FOV_INTERVAL	0.01
+#define SHADOW_ATTACK_LEAD_TIME	0.10
 
 #define MODE_LASTMOVE		0
 #define MODE_FOLLOW		1
@@ -82,7 +83,9 @@ new const SPRITE_SHADOW_IMPACT[] = "sprites/next21_efk/ninja_shadow_impact_v1.sp
 
 enum _:ViewSeq
 {
-	VIEW_SEQ_IDLE
+	VIEW_SEQ_IDLE,
+	VIEW_SEQ_MIDSLASH1 = 6,
+	VIEW_SEQ_MIDSLASH2
 }
 
 enum _:NinjaModeType
@@ -125,7 +128,8 @@ enum _:Player_Properties
 	ShadowPendingClone,
 	bool:ShadowUsePressed,
 	bool:ShadowFovClient,
-	bool:ShadowFovReturning
+	bool:ShadowFovReturning,
+	bool:ShadowAttackStarted
 }
 
 enum _:Player_Properties_F
@@ -1244,6 +1248,7 @@ shadow_jump(iPlayer)
 		return PLUGIN_HANDLED
 
 	Player[iPlayer][ShadowPendingClone] = iClone
+	Player[iPlayer][ShadowAttackStarted] = false
 	PlayerF[iPlayer][ShadowPendingEndTime] = get_entvar(iClone, var_shadow_endtime)
 	PlayerF[iPlayer][ShadowJumpTime] = fGameTime + SHADOW_JUMP_COOLDOWN
 	shadow_start_fov(iPlayer, fGameTime)
@@ -1284,7 +1289,6 @@ shadow_finish_jump(iPlayer)
 	send_msg_TE_SMOKE(vOldOrigin, g_pShadowAura, 7, 40, MSG_PVS, vOldOrigin)
 	send_msg_TE_SMOKE(vNewOrigin, g_pShadowAura, 7, 40, MSG_PVS, vNewOrigin)
 
-	rg_set_animation(iPlayer, PLAYER_ATTACK1)
 	engfunc(EngFunc_EmitSound, iPlayer, CHAN_WEAPON,
 		bHit ? SOUND_KNIFE_HIT1 : (random(2) ? SOUND_KNIFE_SLASH1 : SOUND_KNIFE_SLASH2),
 		1.0, ATTN_NORM, 0, PITCH_NORM)
@@ -1292,6 +1296,31 @@ shadow_finish_jump(iPlayer)
 	shadow_remove_clone(iClone)
 
 	return PLUGIN_CONTINUE
+}
+
+shadow_play_jump_attack(iPlayer)
+{
+	if (!shadow_can_jump(iPlayer))
+		return
+
+	new iClone = Player[iPlayer][ShadowPendingClone]
+	if (is_nullent(iClone) || get_entvar(iClone, var_impulse) != IMPULSE_NINJA_SHADOW
+		|| get_entvar(iClone, var_owner) != iPlayer
+		|| Float:get_entvar(iClone, var_shadow_endtime) != PlayerF[iPlayer][ShadowPendingEndTime]
+		|| Float:get_entvar(iClone, var_shadow_endtime) <= get_gametime())
+		return
+
+	rg_set_animation(iPlayer, PLAYER_ATTACK1)
+	new iWeapon = get_member(iPlayer, m_pActiveItem)
+	if (is_nullent(iWeapon) || get_member(iWeapon, m_iId) != CSW_KNIFE)
+		return
+
+	kc_player_set_view_anim(iPlayer, random_num(VIEW_SEQ_MIDSLASH1, VIEW_SEQ_MIDSLASH2))
+	set_member(iWeapon, m_Weapon_flTimeWeaponIdle, 0.7)
+	set_member(iWeapon, m_Weapon_flNextPrimaryAttack,
+		floatmax(Float:get_member(iWeapon, m_Weapon_flNextPrimaryAttack), SHADOW_ATTACK_LEAD_TIME))
+	set_member(iWeapon, m_Weapon_flNextSecondaryAttack,
+		floatmax(Float:get_member(iWeapon, m_Weapon_flNextSecondaryAttack), SHADOW_ATTACK_LEAD_TIME))
 }
 
 shadow_start_fov(iPlayer, Float:fGameTime)
@@ -1337,6 +1366,13 @@ shadow_update_fov(iPlayer, Float:fGameTime)
 	new Float:fPeak = floatmax(fBase, floatmin(fBase + SHADOW_FOV_BOOST, 120.0))
 	new Float:fElapsed = fGameTime - (PlayerF[iPlayer][ShadowFovEndTime]
 		- SHADOW_FOV_EXPAND_TIME - SHADOW_FOV_RETURN_TIME)
+	if (Player[iPlayer][ShadowPendingClone] && !Player[iPlayer][ShadowAttackStarted]
+		&& fElapsed >= SHADOW_FOV_EXPAND_TIME - SHADOW_ATTACK_LEAD_TIME)
+	{
+		Player[iPlayer][ShadowAttackStarted] = true
+		shadow_play_jump_attack(iPlayer)
+	}
+
 	new Float:fProgress, Float:fFrom, Float:fTo
 	if (fElapsed < SHADOW_FOV_EXPAND_TIME)
 	{
