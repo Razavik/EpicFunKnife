@@ -1643,8 +1643,8 @@ public shadow_clone_think(iClone)
 			xs_vec_copy(vOrigin, vAuraOrigin)
 			vAuraOrigin[0] += random_float(-12.0, 12.0)
 			vAuraOrigin[1] += random_float(-12.0, 12.0)
-			vAuraOrigin[2] += -24.0 + float(i) * 18.0 + random_float(-4.0, 4.0)
-			send_msg_TE_SMOKE(vAuraOrigin, g_pShadowAura, random_num(2, 3), 40, MSG_PVS, vAuraOrigin)
+			vAuraOrigin[2] += -28.0 + float(i) * 12.0 + random_float(-3.0, 3.0)
+			send_msg_TE_SMOKE(vAuraOrigin, g_pShadowAura, random_num(2, 3), 100, MSG_PVS, vAuraOrigin)
 		}
 		set_entvar(iClone, var_shadow_auratime, fGameTime + SHADOW_AURA_INTERVAL)
 	}
