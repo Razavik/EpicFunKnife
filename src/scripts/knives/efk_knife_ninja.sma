@@ -4,6 +4,7 @@
 #include <engine>
 #include <reapi>
 #include <xs>
+#include <next_client_api>
 #include <efk_core>
 #include <efk_utils>
 
@@ -70,8 +71,8 @@ new const SPRITE_SHADOW_IMPACT[] = "sprites/next21_efk/ninja_shadow_impact_v1.sp
 #define SHADOW_AURA_INTERVAL	0.20
 #define SHADOW_SEQ_STAND		12
 #define SHADOW_FOV_BOOST		25.0
-#define SHADOW_FOV_EXPAND_TIME	0.08
-#define SHADOW_FOV_RETURN_TIME	0.24
+#define SHADOW_FOV_EXPAND_TIME	0.18
+#define SHADOW_FOV_RETURN_TIME	0.30
 #define SHADOW_FOV_INTERVAL	0.01
 
 #define MODE_LASTMOVE		0
@@ -122,7 +123,9 @@ enum _:Player_Properties
 	FakeHat,
 	CanSwap,
 	ShadowPendingClone,
-	bool:ShadowUsePressed
+	bool:ShadowUsePressed,
+	bool:ShadowFovClient,
+	bool:ShadowFovReturning
 }
 
 enum _:Player_Properties_F
@@ -1300,6 +1303,16 @@ shadow_start_fov(iPlayer, Float:fGameTime)
 	PlayerF[iPlayer][ShadowFovFrom] = fFov > 0.0 ? fFov : 90.0
 	PlayerF[iPlayer][ShadowFovEndTime] = fGameTime + SHADOW_FOV_EXPAND_TIME + SHADOW_FOV_RETURN_TIME
 	PlayerF[iPlayer][ShadowFovUpdateTime] = fGameTime
+	Player[iPlayer][ShadowFovClient] = ncl_is_client_api_ready(iPlayer)
+	Player[iPlayer][ShadowFovReturning] = false
+	if (Player[iPlayer][ShadowFovClient])
+	{
+		new Float:fBase = PlayerF[iPlayer][ShadowFovBase]
+		if (fBase <= 0.0)
+			fBase = 90.0
+		new Float:fPeak = floatmax(fBase, floatmin(fBase + SHADOW_FOV_BOOST, 120.0))
+		ncl_setfov(iPlayer, floatround(fPeak), SHADOW_FOV_EXPAND_TIME)
+	}
 }
 
 shadow_update_fov(iPlayer, Float:fGameTime)
@@ -1336,9 +1349,15 @@ shadow_update_fov(iPlayer, Float:fGameTime)
 		if (Player[iPlayer][ShadowPendingClone])
 		{
 			set_entvar(iPlayer, var_fov, fPeak)
-			send_msg_SetFOV(floatround(fPeak), MSG_ONE, _, iPlayer)
+			if (!Player[iPlayer][ShadowFovClient])
+				send_msg_SetFOV(floatround(fPeak), MSG_ONE, _, iPlayer)
 			shadow_finish_jump(iPlayer)
 			return
+		}
+		if (Player[iPlayer][ShadowFovClient] && !Player[iPlayer][ShadowFovReturning])
+		{
+			ncl_setfov(iPlayer, floatround(fBase), floatmax(0.01, PlayerF[iPlayer][ShadowFovEndTime] - fGameTime))
+			Player[iPlayer][ShadowFovReturning] = true
 		}
 		fProgress = floatclamp((fElapsed - SHADOW_FOV_EXPAND_TIME) / SHADOW_FOV_RETURN_TIME, 0.0, 1.0)
 		fFrom = fPeak
@@ -1350,7 +1369,8 @@ shadow_update_fov(iPlayer, Float:fGameTime)
 	if (iFov != floatround(Float:get_entvar(iPlayer, var_fov)))
 	{
 		set_entvar(iPlayer, var_fov, float(iFov))
-		send_msg_SetFOV(iFov, MSG_ONE, _, iPlayer)
+		if (!Player[iPlayer][ShadowFovClient])
+			send_msg_SetFOV(iFov, MSG_ONE, _, iPlayer)
 	}
 }
 
@@ -1361,7 +1381,10 @@ shadow_reset_fov(iPlayer)
 		return
 
 	set_entvar(iPlayer, var_fov, PlayerF[iPlayer][ShadowFovBase])
-	send_msg_SetFOV(floatround(PlayerF[iPlayer][ShadowFovBase]), MSG_ONE, _, iPlayer)
+	if (Player[iPlayer][ShadowFovClient] && ncl_is_client_api_ready(iPlayer))
+		ncl_setfov(iPlayer, PlayerF[iPlayer][ShadowFovBase] > 0.0 ? floatround(PlayerF[iPlayer][ShadowFovBase]) : 90, 0.0)
+	else
+		send_msg_SetFOV(floatround(PlayerF[iPlayer][ShadowFovBase]), MSG_ONE, _, iPlayer)
 	PlayerF[iPlayer][ShadowFovEndTime] = 0.0
 }
 
