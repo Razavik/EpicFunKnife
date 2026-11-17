@@ -57,9 +57,6 @@ new const SPRITE_SHADOW_IMPACT[] = "sprites/next21_efk/ninja_shadow_impact_v1.sp
 #define SHADOW_ORB_FRAMES 24
 #define SHADOW_ORB_SCALE 0.14
 #define SHADOW_ORB_RADIUS 6.0
-#define CLASSNAME_SHADOW_IMPACT "next21_ninja_shadow_impact"
-#define SHADOW_IMPACT_LIFE 0.22
-#define SHADOW_IMPACT_FRAMES 12
 
 #define INVISTIME		7.0
 #define SHADOW_CLONE_DISTANCE	100.0
@@ -70,7 +67,7 @@ new const SPRITE_SHADOW_IMPACT[] = "sprites/next21_efk/ninja_shadow_impact_v1.sp
 #define SHADOW_AIM_RADIUS		48.0
 #define SHADOW_GLOW_UPDATE_INTERVAL	0.1
 #define SHADOW_JUMP_COOLDOWN	0.1
-#define SHADOW_AURA_INTERVAL	0.25
+#define SHADOW_AURA_INTERVAL	0.20
 #define SHADOW_SEQ_STAND		12
 #define SHADOW_FOV_BOOST		25.0
 #define SHADOW_FOV_EXPAND_TIME	0.08
@@ -151,7 +148,7 @@ new g_iKnifeId,
 g_player_data[MAX_PLAYERS][Player_Properties], Float:g_player_data_f[32][Player_Properties_F],
 Float:g_vShadowCloneOrigins[MAX_PLAYERS + 1][3][3], bool:g_bShadowClonePositionValid[MAX_PLAYERS + 1][3],
 sprIllusion, g_pKnifeVStr, g_pKnifeInvisVStr, g_pKnifePMdl,
-g_pShadowKnife, g_pShadowAura
+g_pShadowKnife, g_pShadowAura, g_pShadowImpact
 
 public plugin_precache()
 {
@@ -164,7 +161,7 @@ public plugin_precache()
 	g_pShadowKnife = precache_model(MODEL_SHADOW_KNIFE)
 	g_pShadowAura = precache_model(SPRITE_SHADOW_AURA)
 	precache_model(SPRITE_SHADOW_ORB)
-	precache_model(SPRITE_SHADOW_IMPACT)
+	g_pShadowImpact = precache_model(SPRITE_SHADOW_IMPACT)
 
 	precache_sound(SOUND_KNIFE_HIT1)
 	precache_sound(SOUND_KNIFE_STAB)
@@ -1187,39 +1184,12 @@ shadow_orb_burst(iOrb, bool:bImpact = false)
 {
 	new Float:vOrigin[3]
 	get_entvar(iOrb, var_origin, vOrigin)
-	new iImpact = rg_create_entity(SZ_INFO_TARGET)
-	if (!is_nullent(iImpact))
-	{
-		engfunc(EngFunc_SetModel, iImpact, SPRITE_SHADOW_IMPACT)
-		engfunc(EngFunc_SetOrigin, iImpact, vOrigin)
-		set_entvar(iImpact, var_classname, CLASSNAME_SHADOW_IMPACT)
-		set_entvar(iImpact, var_movetype, MOVETYPE_NONE)
-		set_entvar(iImpact, var_solid, SOLID_NOT)
-		set_entvar(iImpact, var_rendermode, kRenderTransAdd)
-		set_entvar(iImpact, var_renderamt, 165.0)
-		set_entvar(iImpact, var_scale, 0.3)
-		set_entvar(iImpact, var_frame, 0.0)
-		set_entvar(iImpact, var_fuser1, get_gametime() + SHADOW_IMPACT_LIFE)
-		set_entvar(iImpact, var_nextthink, get_gametime() + SHADOW_ORB_INTERVAL)
-		SetThink(iImpact, "shadow_impact_think")
-	}
+	send_msg_TE_EXPLOSION(vOrigin, g_pShadowImpact, 4, 36,
+		TE_EXPLFLAG_NODLIGHTS | TE_EXPLFLAG_NOSOUND | TE_EXPLFLAG_NOPARTICLES,
+		MSG_PVS, vOrigin)
 	if (bImpact)
-		send_msg_TE_DLIGHT(vOrigin, 4, {190, 180, 235}, 1, 40, MSG_PVS, vOrigin)
+		send_msg_TE_DLIGHT(vOrigin, 8, {190, 180, 235}, 2, 40, MSG_PVS, vOrigin)
 	rg_remove_entity(iOrb)
-}
-
-public shadow_impact_think(iImpact)
-{
-	new Float:fTimeLeft = get_entvar(iImpact, var_fuser1) - get_gametime()
-	if (fTimeLeft <= 0.0)
-	{
-		rg_remove_entity(iImpact)
-		return
-	}
-	new Float:fProgress = 1.0 - fTimeLeft / SHADOW_IMPACT_LIFE
-	set_entvar(iImpact, var_frame, fProgress * float(SHADOW_IMPACT_FRAMES - 1))
-	set_entvar(iImpact, var_renderamt, 165.0 * (1.0 - fProgress))
-	set_entvar(iImpact, var_nextthink, get_gametime() + SHADOW_ORB_INTERVAL)
 }
 
 shadow_spawn_clones(iPlayer, iTarget)
@@ -1534,7 +1504,7 @@ shadow_create_clone(iOwner, iTarget, const Float:vOrigin[3])
 	set_entvar(iClone, var_shadow_hull, iHull)
 	set_entvar(iClone, var_shadow_spread_starttime, fGameTime)
 	set_entvar(iClone, var_shadow_spread_endtime, fGameTime + SHADOW_CLONE_SPREAD_TIME)
-	set_entvar(iClone, var_movetype, MOVETYPE_NONE)
+	set_entvar(iClone, var_movetype, MOVETYPE_NOCLIP)
 	set_entvar(iClone, var_solid, SOLID_NOT)
 	set_entvar(iClone, var_takedamage, DAMAGE_NO)
 	set_entvar(iClone, var_rendermode, kRenderNormal)
@@ -1556,7 +1526,45 @@ shadow_create_clone(iOwner, iTarget, const Float:vOrigin[3])
 	}
 
 	SetThink(iClone, "shadow_clone_think")
+	if (!shadow_update_spread_velocity(iClone, fGameTime))
+	{
+		shadow_remove_clone(iClone)
+		return NULLENT
+	}
 	return iClone
+}
+
+bool:shadow_update_spread_velocity(iClone, Float:fGameTime)
+{
+	new Float:fEndTime = get_entvar(iClone, var_shadow_spread_endtime)
+	new Float:fStep = floatmin(SHADOW_CLONE_THINK_INTERVAL, fEndTime - fGameTime)
+	if (fStep <= 0.0)
+		return true
+
+	new Float:fStartTime = get_entvar(iClone, var_shadow_spread_starttime)
+	new Float:fProgress = floatclamp((fGameTime + fStep - fStartTime) / SHADOW_CLONE_SPREAD_TIME, 0.0, 1.0)
+	new Float:fEase = fProgress * fProgress * (3.0 - 2.0 * fProgress)
+	new Float:vStart[3], Float:vEnd[3], Float:vCurrent[3], Float:vNext[3], Float:vVelocity[3]
+	get_entvar(iClone, var_shadow_startorigin, vStart)
+	get_entvar(iClone, var_shadow_endorigin, vEnd)
+	get_entvar(iClone, var_origin, vCurrent)
+	xs_vec_sub(vEnd, vStart, vNext)
+	xs_vec_mul_scalar(vNext, fEase, vNext)
+	xs_vec_add(vStart, vNext, vNext)
+
+	new iTrace = create_tr2()
+	engfunc(EngFunc_TraceHull, vCurrent, vNext, IGNORE_MONSTERS,
+		get_entvar(iClone, var_shadow_hull), iClone, iTrace)
+	new bool:bBlocked = get_tr2(iTrace, TR_StartSolid) || get_tr2(iTrace, TR_AllSolid)
+		|| Float:get_tr2(iTrace, TR_flFraction) < 1.0
+	free_tr2(iTrace)
+	if (bBlocked)
+		return false
+
+	xs_vec_sub(vNext, vCurrent, vVelocity)
+	xs_vec_mul_scalar(vVelocity, 1.0 / fStep, vVelocity)
+	set_entvar(iClone, var_velocity, vVelocity)
+	return true
 }
 
 public shadow_clone_think(iClone)
@@ -1571,44 +1579,35 @@ public shadow_clone_think(iClone)
 
 	if (fGameTime >= Float:get_entvar(iClone, var_shadow_auratime))
 	{
-		new Float:vAuraOrigin[3]
-		get_entvar(iClone, var_origin, vAuraOrigin)
-		vAuraOrigin[0] += random_float(-10.0, 10.0)
-		vAuraOrigin[1] += random_float(-10.0, 10.0)
-		vAuraOrigin[2] += random_float(-18.0, 18.0)
-		send_msg_TE_SMOKE(vAuraOrigin, g_pShadowAura, 4, 30, MSG_PVS, vAuraOrigin)
+		new Float:vOrigin[3], Float:vAuraOrigin[3]
+		get_entvar(iClone, var_origin, vOrigin)
+		for (new i; i < 4; i++)
+		{
+			xs_vec_copy(vOrigin, vAuraOrigin)
+			vAuraOrigin[0] += random_float(-12.0, 12.0)
+			vAuraOrigin[1] += random_float(-12.0, 12.0)
+			vAuraOrigin[2] += -24.0 + float(i) * 18.0 + random_float(-4.0, 4.0)
+			send_msg_TE_SMOKE(vAuraOrigin, g_pShadowAura, random_num(2, 3), 40, MSG_PVS, vAuraOrigin)
+		}
 		set_entvar(iClone, var_shadow_auratime, fGameTime + SHADOW_AURA_INTERVAL)
 	}
 
 	new Float:fSpreadEndTime = get_entvar(iClone, var_shadow_spread_endtime)
-	new Float:vStartOrigin[3], Float:vEndOrigin[3], Float:vOrigin[3]
-	get_entvar(iClone, var_shadow_startorigin, vStartOrigin)
+	new Float:vEndOrigin[3]
 	get_entvar(iClone, var_shadow_endorigin, vEndOrigin)
 
 	if (fGameTime < fSpreadEndTime)
 	{
-		new Float:fProgress = floatclamp((fGameTime - get_entvar(iClone, var_shadow_spread_starttime))
-			/ SHADOW_CLONE_SPREAD_TIME, 0.0, 1.0)
-		new Float:fInv = 1.0 - fProgress
-		new Float:fEase = 1.0 - fInv * fInv * fInv
-		new Float:vDirection[3], Float:vOffset[3]
-		xs_vec_sub(vEndOrigin, vStartOrigin, vDirection)
-		xs_vec_mul_scalar(vDirection, fEase, vOffset)
-		xs_vec_add(vStartOrigin, vOffset, vOrigin)
-
-		if (!shadow_is_world_hull_vacant(vOrigin, get_entvar(iClone, var_shadow_hull), iClone))
+		if (!shadow_update_spread_velocity(iClone, fGameTime))
 		{
-			log_amx("[NinjaShadow] clone removed during spread: ent=%d reason=hull_blocked", iClone)
 			shadow_remove_clone(iClone)
 			return
 		}
-
-		engfunc(EngFunc_SetOrigin, iClone, vOrigin)
-		set_entvar(iClone, var_origin, vOrigin)
 		set_entvar(iClone, var_nextthink, floatmin(fGameTime + SHADOW_CLONE_THINK_INTERVAL, fSpreadEndTime))
 		return
 	}
 
+	set_entvar(iClone, var_velocity, NULL_VECTOR)
 	if (!shadow_is_world_hull_vacant(vEndOrigin, get_entvar(iClone, var_shadow_hull), iClone))
 	{
 		log_amx("[NinjaShadow] clone removed after spread: ent=%d reason=hull_blocked", iClone)
@@ -1646,10 +1645,6 @@ public RG_CSGameRules_CleanUpMap_Post()
 	new iOrb = NULLENT
 	while ((iOrb = rg_find_ent_by_class(iOrb, CLASSNAME_SHADOW_ORB)))
 		rg_remove_entity(iOrb)
-
-	new iImpact = NULLENT
-	while ((iImpact = rg_find_ent_by_class(iImpact, CLASSNAME_SHADOW_IMPACT)))
-		rg_remove_entity(iImpact)
 
 	new iClone = NULLENT
 	while ((iClone = rg_find_ent_by_class(iClone, CLASSNAME_SHADOW_CLONE)))
