@@ -1120,7 +1120,7 @@ public shadow_orb_think(iOrb)
 		engfunc(EngFunc_SetOrigin, iOrb, vHit)
 		if (iTarget)
 			shadow_spawn_clones(iOwner, iTarget)
-		shadow_orb_burst(iOrb, true)
+		shadow_orb_burst(iOrb)
 		return
 	}
 
@@ -1128,7 +1128,7 @@ public shadow_orb_think(iOrb)
 	if (fRemaining <= 0.0)
 	{
 		engfunc(EngFunc_SetOrigin, iOrb, vEnd)
-		shadow_orb_burst(iOrb, true)
+		shadow_orb_burst(iOrb)
 		return
 	}
 
@@ -1187,15 +1187,13 @@ bool:shadow_trace_player(const Float:vStart[3], const Float:vEnd[3], iPlayer, &F
 	return shadow_segment_box(vStart, vEnd, vMins, vMaxs, fFraction)
 }
 
-shadow_orb_burst(iOrb, bool:bImpact = false)
+shadow_orb_burst(iOrb)
 {
 	new Float:vOrigin[3]
 	get_entvar(iOrb, var_origin, vOrigin)
 	send_msg_TE_EXPLOSION(vOrigin, g_pShadowImpact, 4, 36,
 		TE_EXPLFLAG_NODLIGHTS | TE_EXPLFLAG_NOSOUND | TE_EXPLFLAG_NOPARTICLES,
 		MSG_PVS, vOrigin)
-	if (bImpact)
-		send_msg_TE_DLIGHT(vOrigin, 8, {190, 180, 235}, 2, 40, MSG_PVS, vOrigin)
 	rg_remove_entity(iOrb)
 }
 
