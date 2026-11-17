@@ -62,7 +62,7 @@ new const SPRITE_SHADOW_IMPACT[] = "sprites/next21_efk/ninja_shadow_impact_v1.sp
 #define INVISTIME		7.0
 #define SHADOW_CLONE_DISTANCE	100.0
 #define SHADOW_CLONE_RANGE	700.0
-#define SHADOW_CLONE_LIFE	5.0
+#define SHADOW_CLONE_LIFE	10.0
 #define SHADOW_CLONE_SPREAD_TIME	0.5
 #define SHADOW_CLONE_THINK_INTERVAL	0.02
 #define SHADOW_AIM_RADIUS		48.0
