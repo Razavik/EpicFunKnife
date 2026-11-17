@@ -1775,8 +1775,10 @@ bool:shadow_damage_segment(iPlayer, const Float:vStart[3], const Float:vEnd[3])
 
 		new iTrace = create_tr2()
 		engfunc(EngFunc_TraceLine, vClosest, vOrigin, IGNORE_MONSTERS, iPlayer, iTrace)
+		new Float:fFraction
+		get_tr2(iTrace, TR_flFraction, fFraction)
 		new bool:bBlocked = get_tr2(iTrace, TR_StartSolid) || get_tr2(iTrace, TR_AllSolid)
-			|| Float:get_tr2(iTrace, TR_flFraction) < 1.0
+			|| fFraction < 1.0
 		free_tr2(iTrace)
 		if (bBlocked)
 			continue
