@@ -1198,12 +1198,17 @@ shadow_spawn_clones(iPlayer, iTarget)
 		return
 
 	new iHull = get_entvar(iPlayer, var_flags) & FL_DUCKING ? HULL_HEAD : HULL_HUMAN
+	new iCreated
 	for (new i; i < 3; i++)
 	{
 		if (g_bShadowClonePositionValid[iPlayer][i]
 			&& shadow_is_hull_vacant(g_vShadowCloneOrigins[iPlayer][i], iHull, iPlayer))
-			shadow_create_clone(iPlayer, iTarget, g_vShadowCloneOrigins[iPlayer][i])
+		{
+			if (shadow_create_clone(iPlayer, iTarget, g_vShadowCloneOrigins[iPlayer][i]))
+				iCreated++
+		}
 	}
+	log_amx("[NinjaShadow] spawn result: player=%d target=%d created=%d", iPlayer, iTarget, iCreated)
 }
 
 bool:shadow_can_jump(iPlayer)
@@ -1476,6 +1481,14 @@ shadow_create_clone(iOwner, iTarget, const Float:vOrigin[3])
 	get_entvar(iTarget, var_mins, vTargetMins)
 	get_entvar(iOwner, var_mins, vOwnerMins)
 	vStartOrigin[2] += vTargetMins[2] - vOwnerMins[2] + 1.0
+	new Float:vTraceEnd[3]
+	xs_vec_copy(vOrigin, vTraceEnd)
+	if (is_wall_between(vStartOrigin, vTraceEnd, iOwner))
+	{
+		log_amx("[NinjaShadow] clone skipped: owner=%d target=%d reason=spread_wall", iOwner, iTarget)
+		rg_remove_entity(iClone)
+		return NULLENT
+	}
 	xs_vec_sub(vTargetOrigin, vOrigin, vLookDirection)
 	vector_to_angle(vLookDirection, vAngles)
 	vAngles[2] = 0.0
@@ -1526,20 +1539,16 @@ shadow_create_clone(iOwner, iTarget, const Float:vOrigin[3])
 	}
 
 	SetThink(iClone, "shadow_clone_think")
-	if (!shadow_update_spread_velocity(iClone, fGameTime))
-	{
-		shadow_remove_clone(iClone)
-		return NULLENT
-	}
+	shadow_update_spread_velocity(iClone, fGameTime)
 	return iClone
 }
 
-bool:shadow_update_spread_velocity(iClone, Float:fGameTime)
+shadow_update_spread_velocity(iClone, Float:fGameTime)
 {
 	new Float:fEndTime = get_entvar(iClone, var_shadow_spread_endtime)
 	new Float:fStep = floatmin(SHADOW_CLONE_THINK_INTERVAL, fEndTime - fGameTime)
 	if (fStep <= 0.0)
-		return true
+		return
 
 	new Float:fStartTime = get_entvar(iClone, var_shadow_spread_starttime)
 	new Float:fProgress = floatclamp((fGameTime + fStep - fStartTime) / SHADOW_CLONE_SPREAD_TIME, 0.0, 1.0)
@@ -1552,18 +1561,10 @@ bool:shadow_update_spread_velocity(iClone, Float:fGameTime)
 	xs_vec_mul_scalar(vNext, fEase, vNext)
 	xs_vec_add(vStart, vNext, vNext)
 
-	new iHull = get_entvar(iClone, var_shadow_hull)
-	engfunc(EngFunc_TraceHull, vCurrent, vNext, IGNORE_MONSTERS,
-		iHull, iClone, 0)
-	new bool:bBlocked = get_tr2(0, TR_StartSolid) || get_tr2(0, TR_AllSolid)
-		|| Float:get_tr2(0, TR_flFraction) < 1.0
-	if (bBlocked)
-		return false
-
 	xs_vec_sub(vNext, vCurrent, vVelocity)
 	xs_vec_mul_scalar(vVelocity, 1.0 / fStep, vVelocity)
 	set_entvar(iClone, var_velocity, vVelocity)
-	return true
+	return
 }
 
 public shadow_clone_think(iClone)
@@ -1597,11 +1598,7 @@ public shadow_clone_think(iClone)
 
 	if (fGameTime < fSpreadEndTime)
 	{
-		if (!shadow_update_spread_velocity(iClone, fGameTime))
-		{
-			shadow_remove_clone(iClone)
-			return
-		}
+		shadow_update_spread_velocity(iClone, fGameTime)
 		set_entvar(iClone, var_nextthink, floatmin(fGameTime + SHADOW_CLONE_THINK_INTERVAL, fSpreadEndTime))
 		return
 	}
