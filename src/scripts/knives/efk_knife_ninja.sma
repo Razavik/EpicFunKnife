@@ -1552,12 +1552,11 @@ bool:shadow_update_spread_velocity(iClone, Float:fGameTime)
 	xs_vec_mul_scalar(vNext, fEase, vNext)
 	xs_vec_add(vStart, vNext, vNext)
 
-	new iTrace = create_tr2()
+	new iHull = get_entvar(iClone, var_shadow_hull)
 	engfunc(EngFunc_TraceHull, vCurrent, vNext, IGNORE_MONSTERS,
-		get_entvar(iClone, var_shadow_hull), iClone, iTrace)
-	new bool:bBlocked = get_tr2(iTrace, TR_StartSolid) || get_tr2(iTrace, TR_AllSolid)
-		|| Float:get_tr2(iTrace, TR_flFraction) < 1.0
-	free_tr2(iTrace)
+		iHull, iClone, 0)
+	new bool:bBlocked = get_tr2(0, TR_StartSolid) || get_tr2(0, TR_AllSolid)
+		|| Float:get_tr2(0, TR_flFraction) < 1.0
 	if (bBlocked)
 		return false
 
