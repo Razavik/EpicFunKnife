@@ -49,12 +49,17 @@ new const MODEL_SHADOW_CLONE[] = "models/next21_efk/ninja_shadow_v1.mdl"
 new const MODEL_SHADOW_KNIFE[] = "models/next21_efk/p_ninja_shadow_v1.mdl"
 new const SPRITE_SHADOW_AURA[] = "sprites/next21_efk/ninja_shadow_aura_v1.spr"
 new const SPRITE_SHADOW_ORB[] = "sprites/next21_efk/ninja_shadow_orb_v1.spr"
-new const SPRITE_SHADOW_IMPACT[] = "sprites/shockwave.spr"
+new const SPRITE_SHADOW_IMPACT[] = "sprites/next21_efk/ninja_shadow_impact_v1.spr"
 #define CLASSNAME_SHADOW_ORB "next21_ninja_shadow_orb"
 #define SHADOW_ORB_DISTANCE 400.0
 #define SHADOW_ORB_SPEED 600.0
 #define SHADOW_ORB_INTERVAL 0.01
 #define SHADOW_ORB_FRAMES 24
+#define SHADOW_ORB_SCALE 0.14
+#define SHADOW_ORB_RADIUS 6.0
+#define CLASSNAME_SHADOW_IMPACT "next21_ninja_shadow_impact"
+#define SHADOW_IMPACT_LIFE 0.22
+#define SHADOW_IMPACT_FRAMES 12
 
 #define INVISTIME		7.0
 #define SHADOW_CLONE_DISTANCE	100.0
@@ -146,7 +151,7 @@ new g_iKnifeId,
 g_player_data[MAX_PLAYERS][Player_Properties], Float:g_player_data_f[32][Player_Properties_F],
 Float:g_vShadowCloneOrigins[MAX_PLAYERS + 1][3][3], bool:g_bShadowClonePositionValid[MAX_PLAYERS + 1][3],
 sprIllusion, g_pKnifeVStr, g_pKnifeInvisVStr, g_pKnifePMdl,
-g_pShadowKnife, g_pShadowAura, g_pShadowOrb, g_pShadowImpact
+g_pShadowKnife, g_pShadowAura
 
 public plugin_precache()
 {
@@ -158,8 +163,8 @@ public plugin_precache()
 	precache_model(MODEL_SHADOW_CLONE)
 	g_pShadowKnife = precache_model(MODEL_SHADOW_KNIFE)
 	g_pShadowAura = precache_model(SPRITE_SHADOW_AURA)
-	g_pShadowOrb = precache_model(SPRITE_SHADOW_ORB)
-	g_pShadowImpact = precache_model(SPRITE_SHADOW_IMPACT)
+	precache_model(SPRITE_SHADOW_ORB)
+	precache_model(SPRITE_SHADOW_IMPACT)
 
 	precache_sound(SOUND_KNIFE_HIT1)
 	precache_sound(SOUND_KNIFE_STAB)
@@ -1036,13 +1041,17 @@ shadow_launch_orb(iPlayer)
 	set_entvar(iOrb, var_classname, CLASSNAME_SHADOW_ORB)
 	set_entvar(iOrb, var_owner, iPlayer)
 	set_entvar(iOrb, var_iuser1, get_user_userid(iPlayer))
-	set_entvar(iOrb, var_movetype, MOVETYPE_NONE)
+	set_entvar(iOrb, var_movetype, MOVETYPE_NOCLIP)
 	set_entvar(iOrb, var_solid, SOLID_NOT)
 	set_entvar(iOrb, var_rendermode, kRenderTransAdd)
 	set_entvar(iOrb, var_renderamt, 180.0)
-	set_entvar(iOrb, var_scale, 0.4)
+	set_entvar(iOrb, var_scale, SHADOW_ORB_SCALE)
 	set_entvar(iOrb, var_frame, 0.0)
 	set_entvar(iOrb, var_vuser1, vDirection)
+	set_entvar(iOrb, var_vuser2, vOrigin)
+	new Float:vVelocity[3]
+	xs_vec_mul_scalar(vDirection, SHADOW_ORB_SPEED, vVelocity)
+	set_entvar(iOrb, var_velocity, vVelocity)
 	set_entvar(iOrb, var_fuser1, SHADOW_ORB_DISTANCE)
 	set_entvar(iOrb, var_fuser2, get_gametime())
 	set_entvar(iOrb, var_nextthink, get_gametime() + SHADOW_ORB_INTERVAL)
@@ -1062,28 +1071,50 @@ public shadow_orb_think(iOrb)
 
 	new Float:fNow = get_gametime()
 	new Float:fRemaining = get_entvar(iOrb, var_fuser1)
-	new Float:fStep = floatmin(fRemaining, SHADOW_ORB_SPEED * (fNow - get_entvar(iOrb, var_fuser2)))
+	new Float:fLastThink = get_entvar(iOrb, var_fuser2)
+	new Float:fStep = floatmin(fRemaining, SHADOW_ORB_SPEED * (fNow - fLastThink))
 	new Float:vStart[3], Float:vEnd[3], Float:vDirection[3]
-	get_entvar(iOrb, var_origin, vStart)
+	get_entvar(iOrb, var_vuser2, vStart)
 	get_entvar(iOrb, var_vuser1, vDirection)
 	xs_vec_mul_scalar(vDirection, fStep, vEnd)
 	xs_vec_add(vStart, vEnd, vEnd)
 
 	new iTrace = create_tr2()
-	engfunc(EngFunc_TraceHull, vStart, vEnd, DONT_IGNORE_MONSTERS, HULL_HEAD, iOwner, iTrace)
+	engfunc(EngFunc_TraceHull, vStart, vEnd, IGNORE_MONSTERS, HULL_POINT, iOwner, iTrace)
 	new Float:fFraction
 	get_tr2(iTrace, TR_flFraction, fFraction)
-	new iTarget = get_tr2(iTrace, TR_pHit)
-	new bool:bHit = fFraction < 1.0 || get_tr2(iTrace, TR_StartSolid) || get_tr2(iTrace, TR_AllSolid)
-	get_tr2(iTrace, TR_vecEndPos, vEnd)
+	new bool:bStartSolid = bool:(get_tr2(iTrace, TR_StartSolid) || get_tr2(iTrace, TR_AllSolid))
+	if (bStartSolid)
+		fFraction = 0.0
+	new bool:bHit = fFraction < 1.0 || bStartSolid
+	new Float:vHit[3], iTarget
+	get_tr2(iTrace, TR_vecEndPos, vHit)
+	for (new iPlayer = 1; iPlayer <= MaxClients; iPlayer++)
+	{
+		if (!is_user_alive(iPlayer) || iPlayer == iOwner
+			|| get_member(iPlayer, m_iTeam) == get_member(iOwner, m_iTeam)
+			|| kc_player_check_game_flag(iPlayer, PLGF_IN_UNABILITY))
+			continue
+
+		new Float:fPlayerFraction
+		if (shadow_trace_player(vStart, vEnd, iPlayer, fPlayerFraction)
+			&& (fPlayerFraction < fFraction || (!bHit && fPlayerFraction <= fFraction)))
+		{
+			fFraction = fPlayerFraction
+			new Float:vDelta[3]
+			xs_vec_sub(vEnd, vStart, vDelta)
+			xs_vec_mul_scalar(vDelta, fFraction, vDelta)
+			xs_vec_add(vStart, vDelta, vHit)
+			iTarget = iPlayer
+			bHit = true
+		}
+	}
 	free_tr2(iTrace)
-	engfunc(EngFunc_SetOrigin, iOrb, vEnd)
 
 	if (bHit)
 	{
-		if (is_entity_player(iTarget) && is_user_alive(iTarget) && iTarget != iOwner
-			&& get_member(iTarget, m_iTeam) != get_member(iOwner, m_iTeam)
-			&& !kc_player_check_game_flag(iTarget, PLGF_IN_UNABILITY))
+		engfunc(EngFunc_SetOrigin, iOrb, vHit)
+		if (iTarget)
 			shadow_spawn_clones(iOwner, iTarget)
 		shadow_orb_burst(iOrb, true)
 		return
@@ -1092,33 +1123,103 @@ public shadow_orb_think(iOrb)
 	fRemaining -= fStep
 	if (fRemaining <= 0.0)
 	{
-		shadow_orb_burst(iOrb)
+		engfunc(EngFunc_SetOrigin, iOrb, vEnd)
+		shadow_orb_burst(iOrb, true)
 		return
 	}
 
+	set_entvar(iOrb, var_vuser2, vEnd)
 	set_entvar(iOrb, var_fuser1, fRemaining)
 	set_entvar(iOrb, var_fuser2, fNow)
 	set_entvar(iOrb, var_frame, float((floatround(fNow * 24.0, floatround_floor)) % SHADOW_ORB_FRAMES))
 	set_entvar(iOrb, var_nextthink, fNow + SHADOW_ORB_INTERVAL)
 }
 
+bool:shadow_segment_box(const Float:vStart[3], const Float:vEnd[3],
+	const Float:vMins[3], const Float:vMaxs[3], &Float:fFraction)
+{
+	new Float:fEnter = 0.0, Float:fLeave = 1.0
+	for (new i; i < 3; i++)
+	{
+		new Float:fDelta = vEnd[i] - vStart[i]
+		if (floatabs(fDelta) < 0.00001)
+		{
+			if (vStart[i] < vMins[i] || vStart[i] > vMaxs[i])
+				return false
+			continue
+		}
+
+		new Float:fNear = (vMins[i] - vStart[i]) / fDelta
+		new Float:fFar = (vMaxs[i] - vStart[i]) / fDelta
+		if (fNear > fFar)
+		{
+			new Float:fSwap = fNear
+			fNear = fFar
+			fFar = fSwap
+		}
+		fEnter = floatmax(fEnter, fNear)
+		fLeave = floatmin(fLeave, fFar)
+		if (fEnter > fLeave)
+			return false
+	}
+
+	fFraction = fEnter
+	return true
+}
+
+bool:shadow_trace_player(const Float:vStart[3], const Float:vEnd[3], iPlayer, &Float:fFraction)
+{
+	new Float:vOrigin[3], Float:vMins[3], Float:vMaxs[3]
+	get_entvar(iPlayer, var_origin, vOrigin)
+	get_entvar(iPlayer, var_mins, vMins)
+	get_entvar(iPlayer, var_maxs, vMaxs)
+	xs_vec_add(vOrigin, vMins, vMins)
+	xs_vec_add(vOrigin, vMaxs, vMaxs)
+	for (new i; i < 3; i++)
+	{
+		vMins[i] -= SHADOW_ORB_RADIUS
+		vMaxs[i] += SHADOW_ORB_RADIUS
+	}
+	return shadow_segment_box(vStart, vEnd, vMins, vMaxs, fFraction)
+}
+
 shadow_orb_burst(iOrb, bool:bImpact = false)
 {
 	new Float:vOrigin[3]
 	get_entvar(iOrb, var_origin, vOrigin)
-	if (bImpact)
+	new iImpact = rg_create_entity(SZ_INFO_TARGET)
+	if (!is_nullent(iImpact))
 	{
-		new Float:vAxis[3]
-		xs_vec_copy(vOrigin, vAxis)
-		vAxis[2] += 240.0
-		send_msg_TE_BEAMCYLINDER(vOrigin, vAxis, g_pShadowImpact,
-			0, 0, 3, 8, 0, {190, 180, 235}, 160, 0, MSG_PVS, vOrigin)
-		send_msg_TE_DLIGHT(vOrigin, 8, {190, 180, 235}, 2, 40, MSG_PVS, vOrigin)
+		engfunc(EngFunc_SetModel, iImpact, SPRITE_SHADOW_IMPACT)
+		engfunc(EngFunc_SetOrigin, iImpact, vOrigin)
+		set_entvar(iImpact, var_classname, CLASSNAME_SHADOW_IMPACT)
+		set_entvar(iImpact, var_movetype, MOVETYPE_NONE)
+		set_entvar(iImpact, var_solid, SOLID_NOT)
+		set_entvar(iImpact, var_rendermode, kRenderTransAdd)
+		set_entvar(iImpact, var_renderamt, 165.0)
+		set_entvar(iImpact, var_scale, 0.3)
+		set_entvar(iImpact, var_frame, 0.0)
+		set_entvar(iImpact, var_fuser1, get_gametime() + SHADOW_IMPACT_LIFE)
+		set_entvar(iImpact, var_nextthink, get_gametime() + SHADOW_ORB_INTERVAL)
+		SetThink(iImpact, "shadow_impact_think")
 	}
-	send_msg_TE_EXPLOSION(vOrigin, g_pShadowOrb, 6, 32,
-		TE_EXPLFLAG_NODLIGHTS | TE_EXPLFLAG_NOSOUND | TE_EXPLFLAG_NOPARTICLES,
-		MSG_PVS, vOrigin)
+	if (bImpact)
+		send_msg_TE_DLIGHT(vOrigin, 4, {190, 180, 235}, 1, 40, MSG_PVS, vOrigin)
 	rg_remove_entity(iOrb)
+}
+
+public shadow_impact_think(iImpact)
+{
+	new Float:fTimeLeft = get_entvar(iImpact, var_fuser1) - get_gametime()
+	if (fTimeLeft <= 0.0)
+	{
+		rg_remove_entity(iImpact)
+		return
+	}
+	new Float:fProgress = 1.0 - fTimeLeft / SHADOW_IMPACT_LIFE
+	set_entvar(iImpact, var_frame, fProgress * float(SHADOW_IMPACT_FRAMES - 1))
+	set_entvar(iImpact, var_renderamt, 165.0 * (1.0 - fProgress))
+	set_entvar(iImpact, var_nextthink, get_gametime() + SHADOW_ORB_INTERVAL)
 }
 
 shadow_spawn_clones(iPlayer, iTarget)
@@ -1545,6 +1646,10 @@ public RG_CSGameRules_CleanUpMap_Post()
 	new iOrb = NULLENT
 	while ((iOrb = rg_find_ent_by_class(iOrb, CLASSNAME_SHADOW_ORB)))
 		rg_remove_entity(iOrb)
+
+	new iImpact = NULLENT
+	while ((iImpact = rg_find_ent_by_class(iImpact, CLASSNAME_SHADOW_IMPACT)))
+		rg_remove_entity(iImpact)
 
 	new iClone = NULLENT
 	while ((iClone = rg_find_ent_by_class(iClone, CLASSNAME_SHADOW_CLONE)))
