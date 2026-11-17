@@ -70,6 +70,7 @@ new const SPRITE_SHADOW_IMPACT[] = "sprites/next21_efk/ninja_shadow_impact_v1.sp
 #define SHADOW_JUMP_COOLDOWN	0.1
 #define SHADOW_AURA_INTERVAL	0.20
 #define SHADOW_SEQ_STAND		12
+#define SHADOW_CLONE_FOOT_OFFSET	36.0
 #define SHADOW_FOV_BOOST		8.0
 #define SHADOW_FOV_EXPAND_TIME	0.20
 #define SHADOW_FOV_RETURN_TIME	0.30
@@ -1202,7 +1203,7 @@ shadow_spawn_clones(iPlayer, iTarget)
 	if (!shadow_calculate_origins(iPlayer, iTarget))
 		return
 
-	new iHull = get_entvar(iPlayer, var_flags) & FL_DUCKING ? HULL_HEAD : HULL_HUMAN
+	new iHull = HULL_HUMAN
 	new iCreated
 	for (new i; i < 3; i++)
 	{
@@ -1226,6 +1227,14 @@ bool:shadow_can_jump(iPlayer)
 		&& !get_member_game(m_bRoundTerminating)
 }
 
+shadow_get_jump_origin(iPlayer, iClone, Float:vOrigin[3])
+{
+	new Float:vMins[3]
+	get_entvar(iClone, var_origin, vOrigin)
+	get_entvar(iPlayer, var_mins, vMins)
+	vOrigin[2] -= SHADOW_CLONE_FOOT_OFFSET + vMins[2]
+}
+
 shadow_jump(iPlayer)
 {
 	if (!shadow_can_jump(iPlayer) || Player[iPlayer][ShadowPendingClone])
@@ -1240,7 +1249,7 @@ shadow_jump(iPlayer)
 		return PLUGIN_HANDLED
 
 	new Float:vNewOrigin[3]
-	get_entvar(iClone, var_origin, vNewOrigin)
+	shadow_get_jump_origin(iPlayer, iClone, vNewOrigin)
 	new iHull = get_entvar(iPlayer, var_flags) & FL_DUCKING ? HULL_HEAD : HULL_HUMAN
 	if (!shadow_is_hull_vacant(vNewOrigin, iHull, iPlayer))
 		return PLUGIN_HANDLED
@@ -1266,7 +1275,7 @@ shadow_finish_jump(iPlayer)
 
 	new Float:vOldOrigin[3], Float:vNewOrigin[3], Float:vVelocity[3], Float:vBaseVelocity[3], Float:vCloneAngles[3]
 	get_entvar(iPlayer, var_origin, vOldOrigin)
-	get_entvar(iClone, var_origin, vNewOrigin)
+	shadow_get_jump_origin(iPlayer, iClone, vNewOrigin)
 	get_entvar(iClone, var_angles, vCloneAngles)
 	get_entvar(iPlayer, var_velocity, vVelocity)
 	get_entvar(iPlayer, var_basevelocity, vBaseVelocity)
@@ -1500,11 +1509,8 @@ bool:shadow_calculate_origins(iPlayer, iTarget)
 			continue
 		}
 
-		new Float:vOwnerMins[3]
-		get_entvar(iPlayer, var_mins, vOwnerMins)
-		g_vShadowCloneOrigins[iPlayer][i][2] -= vOwnerMins[2]
-		g_vShadowCloneOrigins[iPlayer][i][2] += 1.0
-		new iHull = get_entvar(iPlayer, var_flags) & FL_DUCKING ? HULL_HEAD : HULL_HUMAN
+		g_vShadowCloneOrigins[iPlayer][i][2] += SHADOW_CLONE_FOOT_OFFSET + 1.0
+		new iHull = HULL_HUMAN
 		if (!shadow_is_hull_vacant(g_vShadowCloneOrigins[iPlayer][i], iHull, iPlayer))
 		{
 			log_amx("[NinjaShadow] placement failed: player=%d target=%d index=%d reason=hull_blocked",
@@ -1532,12 +1538,11 @@ shadow_create_clone(iOwner, iTarget, const Float:vOrigin[3])
 
 	new Float:vAngles[3], Float:vTargetOrigin[3], Float:vStartOrigin[3]
 	new Float:fGameTime = get_gametime()
-	new Float:vTargetMins[3], Float:vOwnerMins[3], Float:vLookDirection[3]
+	new Float:vTargetMins[3], Float:vLookDirection[3]
 	get_entvar(iTarget, var_origin, vTargetOrigin)
 	get_entvar(iTarget, var_origin, vStartOrigin)
 	get_entvar(iTarget, var_mins, vTargetMins)
-	get_entvar(iOwner, var_mins, vOwnerMins)
-	vStartOrigin[2] += vTargetMins[2] - vOwnerMins[2] + 1.0
+	vStartOrigin[2] += vTargetMins[2] + SHADOW_CLONE_FOOT_OFFSET + 1.0
 	new Float:vTraceEnd[3]
 	xs_vec_copy(vOrigin, vTraceEnd)
 	if (is_wall_between(vStartOrigin, vTraceEnd, iOwner))
@@ -1550,7 +1555,7 @@ shadow_create_clone(iOwner, iTarget, const Float:vOrigin[3])
 	vector_to_angle(vLookDirection, vAngles)
 	vAngles[2] = 0.0
 
-	new iHull = get_entvar(iOwner, var_flags) & FL_DUCKING ? HULL_HEAD : HULL_HUMAN
+	new iHull = HULL_HUMAN
 	new iSeq = SHADOW_SEQ_STAND
 
 	engfunc(EngFunc_SetModel, iClone, MODEL_SHADOW_CLONE)
